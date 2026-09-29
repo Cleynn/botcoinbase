@@ -207,11 +207,8 @@ def test_with_no_gateway_nothing_is_ever_submitted(safe: SafetyEnv, sql: Sql) ->
     result = pipeline.submit(safe.proposal(), source="test", slot="s1", book=safe.book())
     assert result.kind == "no_gateway" and result.reasons == ("NO_GATEWAY",)
     assert sql("SELECT count(*) AS n FROM order_intents")[0]["n"] == 1  # the intent is recorded
-    assert (
-        sql("SELECT count(*) AS n FROM order_attempts")[0]["n"] == 0
-        and safe.fake.calls == safe.fake.calls[:0]
-        or True
-    )
+    assert sql("SELECT count(*) AS n FROM order_attempts")[0]["n"] == 0
+    assert "submit" not in safe.fake.calls
 
 
 # ------------------------------------------------------------------ every block reason on the real path
