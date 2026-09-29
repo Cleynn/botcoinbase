@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Reports</h1>
+<p class="notice">Reports describe simulated (BACKTEST) or local paper (PAPER) results only. They are read-only, never real trading, and not a promise of profit.</p>
+<div class="table-wrap">
+  <table>
+    <caption class="visually-hidden">Reports, newest first</caption>
+    <thead><tr><th scope="col">Report</th><th scope="col">Kind</th><th scope="col">Mode</th><th scope="col">Created</th><th scope="col">SHA-256</th></tr></thead>
+    <tbody>
+    {% for r in view.rows %}
+      <tr>
+        <td><a href="/reports/{{ r.id }}">{{ r.title }}</a></td>
+        <td>{{ r.kind }}</td>
+        <td><span class="badge">{{ r.label }}</span></td>
+        <td>{{ r.created }}</td>
+        <td><code>{{ r.sha }}</code></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">No reports yet. Reports are created from the host: backtest, paper report and data-quality commands.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if view.pages > 1 %}
+<nav aria-label="Pages"><p>Page {{ view.page }} of {{ view.pages }}:
+  {% if view.page > 1 %}<a href="/reports?page={{ view.page - 1 }}">Previous</a>{% endif %}
+  {% if view.page < view.pages %}<a href="/reports?page={{ view.page + 1 }}">Next</a>{% endif %}
+</p></nav>
+{% endif %}
+{% endblock %}

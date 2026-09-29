@@ -30,6 +30,20 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("POST", "/security/sessions/revoke-others"): "revoke_own_sessions",
     ("POST", "/security/users/revoke-sessions"): "revoke_user_sessions",
     ("GET", "/audit"): "view_audit",
+    ("GET", "/reports"): "view_reports",
+    ("GET", "/reports/{report_id}"): "view_reports",
+    ("GET", "/reports/{report_id}/json"): "view_reports",
+    ("GET", "/reports/{report_id}/md"): "view_reports",
+    ("GET", "/pairs"): "view_pairs",
+    ("GET", "/pairs/products"): "view_pairs",
+    ("GET", "/pairs/{pair_id}"): "view_pairs",
+    ("POST", "/pairs/candidates"): "manage_pairs",
+    ("POST", "/pairs/{pair_id}/validate"): "manage_pairs",
+    ("POST", "/pairs/{pair_id}/pause"): "manage_pairs",
+    ("POST", "/pairs/{pair_id}/deactivate"): "manage_pairs",
+    ("GET", "/pairs/{pair_id}/{action}/request"): "manage_pairs",
+    ("POST", "/pairs/{pair_id}/{action}/reauth"): "manage_pairs",
+    ("POST", "/pairs/{pair_id}/{action}/confirm"): "manage_pairs",
 }
 PUBLIC = {key for key, value in EXPECTED.items() if value == "public"}
 ADMIN_ONLY = {"/audit", "/security/users/revoke-sessions"}
@@ -62,9 +76,10 @@ def test_only_login_and_health_are_reachable_without_a_session(app: Any) -> None
 
 
 def test_anonymous_visitors_cannot_use_any_protected_route(app: Any, client: TestClient) -> None:
-    for (method, path), level in EXPECTED.items():
+    for (method, template), level in EXPECTED.items():
         if level == "public":
             continue
+        path = template.format(pair_id=uuid4(), report_id=uuid4(), action="archive")
         if method == "GET":
             response = client.get(path, follow_redirects=False)
             assert response.status_code == 303 and response.headers["location"] == "/login", path
@@ -290,7 +305,8 @@ def test_no_page_exposes_a_bot_pair_exchange_or_config_control(admin_client: Tes
             "pause bot",
         ):
             assert word not in body
-    for path in ("/bot", "/pairs", "/orders", "/exchange", "/config", "/review", "/reports"):
+    # Phase 4 added /pairs; the other control surfaces still do not exist.
+    for path in ("/bot", "/orders", "/exchange", "/config", "/review"):
         assert admin_client.get(path).status_code == 404
         assert admin_client.post(path, data={"csrf_token": "x"}).status_code in (403, 404, 405)
 

@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status
+.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report
 
 format:
 	uv run ruff check --fix .
@@ -44,3 +44,40 @@ verify-monitoring-config:
 # Read-only: asks Prometheus (inside its container) for target health and firing alerts.
 monitoring-status:
 	$(PY) scripts/monitoring_status.py
+
+# Phase 4: pair discovery and validation (public Coinbase market data only, via the allowlist proxy).
+pairs-discover:
+	docker compose --profile discovery run --rm pairs discover
+
+pairs-seed:
+	docker compose --profile discovery run --rm pairs seed --queue-validation
+
+pairs-validate:
+	docker compose --profile discovery run --rm pairs validate
+
+pairs-list:
+	docker compose --profile discovery run --rm pairs list
+
+# Phase 5: market data, backtests and PAPER trading. Public GETs only; import is a dry run unless
+# COMMIT=1. Nothing here trades on any exchange. Usage: make market-import PRODUCT=BTC-USDC
+PRODUCT ?= BTC-USDC
+market-import:
+	docker compose --profile discovery run --rm batch market import --product $(PRODUCT) $(if $(COMMIT),--commit,)
+
+market-snapshot:
+	docker compose --profile discovery run --rm batch market snapshot --product $(PRODUCT)
+
+market-quality:
+	docker compose --profile discovery run --rm batch market quality --product $(PRODUCT)
+
+backtest:
+	docker compose --profile discovery run --rm batch backtest run --snapshot $(SNAPSHOT) $(if $(WALK),--walk-forward,)
+
+paper-status:
+	docker compose --profile discovery run --rm batch paper status
+
+paper-step:
+	docker compose --profile discovery run --rm batch paper step
+
+paper-report:
+	docker compose --profile discovery run --rm batch paper report

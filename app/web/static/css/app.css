@@ -60,3 +60,22 @@ th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--border
 code { font-family: ui-monospace, monospace; background: var(--panel); padding: 0 .25rem; }
 .filter { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin: 1rem 0; }
 .filter label { margin: 0; }
+.badge { display: inline-block; padding: 0 .5rem; border: 1px solid var(--border); border-radius: .5rem; font-size: .875rem; font-weight: 600; background: var(--panel); }
+.state-paper_active, .check-pass { border-color: #15803d; }
+.state-research_only, .state-disabled, .check-inconclusive { border-color: #a16207; }
+.state-archived { color: var(--muted); }
+.check-fail { border-color: #b91c1c; }
+.lifecycle { display: flex; flex-wrap: wrap; gap: .25rem .75rem; list-style: none; padding: 0; margin: .5rem 0; }
+.lifecycle li { padding: .25rem .5rem; border: 1px solid var(--border); border-radius: .5rem; }
+.lifecycle li.current { border-width: 3px; font-weight: 700; }
+.lifecycle li.done { background: var(--panel); }
+.lifecycle li.blocked, .lifecycle li.todo { color: var(--muted); }
+.lifecycle li.blocked { border-style: dashed; }
+.actions { list-style: none; padding: 0; }
+.actions li { margin: .5rem 0; }
+a.button { display: inline-block; min-height: 2.75rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: .5rem; }
+pre.report { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; padding: .75rem 1rem; }
+
+/* Report text is preformatted; it wraps and scrolls inside its own box, never the page. */
+pre.report { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; }
+.notice code { overflow-wrap: anywhere; }

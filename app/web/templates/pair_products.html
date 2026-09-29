@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Discovered products</h1>
+<p class="notice">These are Coinbase spot products quoted in USDC, read from public product data by the host runner. Being listed here does not make a product a pair. Adding one creates a PROPOSED candidate only.</p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p>
+  {% if view.default_only %}Showing default candidates (active USDC spot products). <a href="/pairs/products?show=all">Show every discovered product</a>.
+  {% else %}Showing every discovered product. <a href="/pairs/products">Show default candidates only</a>.{% endif %}
+  {{ view.total }} product(s).
+</p>
+<p><a href="/pairs">Back to pairs</a></p>
+<div class="table-wrap">
+  <table>
+    <caption class="visually-hidden">Discovered products</caption>
+    <thead><tr><th scope="col">Product</th><th scope="col">Rank</th><th scope="col">Status text</th><th scope="col">Blocking flags</th><th scope="col">Default candidate</th><th scope="col">Why not</th><th scope="col">Metadata age</th><th scope="col">Pair</th></tr></thead>
+    <tbody>
+    {% for r in view.rows %}
+      <tr>
+        <td>{{ r.product_id }}</td><td>{{ r.rank }}</td><td>{{ r.status }}</td><td>{{ r.blocking }}</td>
+        <td>{{ "yes" if r.default else "no" }}</td><td>{{ r.reasons }}</td><td>{{ r.metadata_age }}</td>
+        <td>
+          {% if r.pair_id %}<a href="/pairs/{{ r.pair_id }}">{{ r.pair_state }}</a>
+          {% elif r.can_add %}
+          <form method="post" action="/pairs/candidates" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+            <input type="hidden" name="product_id" value="{{ r.id }}">
+            <button type="submit" aria-label="Add {{ r.product_id }} as a candidate">Add as candidate</button>
+          </form>
+          {% else %}{{ r.pair_state }}{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8">No products. Discovery has not run yet (host command: pairs discover).</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if view.pages > 1 %}
+<nav aria-label="Pages"><p>
+  Page {{ view.page }} of {{ view.pages }}:
+  {% if view.page > 1 %}<a href="/pairs/products?page={{ view.page - 1 }}{% if not view.default_only %}&amp;show=all{% endif %}">Previous</a>{% endif %}
+  {% if view.page < view.pages %}<a href="/pairs/products?page={{ view.page + 1 }}{% if not view.default_only %}&amp;show=all{% endif %}">Next</a>{% endif %}
+</p></nav>
+{% endif %}
+{% endblock %}

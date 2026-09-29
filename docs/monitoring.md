@@ -48,6 +48,18 @@ Metrics are read from a cached snapshot (`app/monitoring/health.py`, refreshed a
 | `tradingdots_audit_chain_ok` | gauge | - | database | 1 if the audit hash chain verified, 0 if it is broken. |
 | `tradingdots_audit_chain_events_verified` | gauge | - | database | Audit events covered by the last chain verification. |
 | `tradingdots_audit_last_verified_timestamp_seconds` | gauge | - | database | When the audit chain was last verified. |
+| `tradingdots_pair_candidates_total` | gauge | - | database | Pairs that are not archived (candidates and the active pair). |
+| `tradingdots_pair_state_total` | gauge | `state` | database | Pairs currently in each lifecycle state (a count of rows, kept as a gauge under the contract name). One series per state, zeros included because they are real counts. |
+| `tradingdots_pair_metadata_age_seconds` | gauge | - | database | Age of the oldest verified product metadata among non-archived pairs. Absent when there are no pairs. An extension to the contract list; its source (the time metadata was last verified against Coinbase) is real. |
+| `tradingdots_ingest_last_success_timestamp_seconds` | gauge | - | database | When a candle import last completed without error. Absent until one has. |
+| `tradingdots_data_quality_events_total` | counter | `code` | database | Data-quality events recorded by candle imports, by event code (a fixed set, zeros included). |
+| `tradingdots_backtest_runs_total` | counter | - | database | Stored backtest runs. |
+| `tradingdots_backtest_last_run_timestamp_seconds` | gauge | - | database | When a backtest was last stored. Absent until one has. |
+| `tradingdots_reports_total` | counter | - | database | Stored reports. |
+| `tradingdots_paper_running` | gauge | - | database | 1 while the local paper session is RUNNING, else 0 (PAPER only). |
+| `tradingdots_paper_orders` | gauge | `state` | database | Local paper orders by state (PAPER only, never exchange orders). |
+| `tradingdots_paper_deployed_quote` | gauge | - | database | Paper deployment: open buy reserve plus inventory cost, in USDC (PAPER only). |
+| `tradingdots_paper_free_cash_quote` | gauge | - | database | Paper cash not reserved by open buys, in USDC (PAPER only). |
 | `tradingdots_metrics_scrapes_total` | counter | - | listener | Scrapes served by the metrics listener. |
 | `tradingdots_metrics_last_scrape_timestamp_seconds` | gauge | - | listener | When the metrics listener last served a scrape. |
 | `tradingdots_collector_errors_total` | counter | `collector` | collector | Errors while collecting metrics, by collector. |
@@ -55,10 +67,10 @@ Metrics are read from a cached snapshot (`app/monitoring/health.py`, refreshed a
 Plus the standard `process_*` and `python_*` families from the client library. Nothing else is published. The exposition is passed through a sanitiser that drops unknown families, unexpected or sensitive label names, non-plain label values and anything beyond 100 series per family (`tradingdots_collector_errors_total` counts render failures).
 
 ### Label policy
-Only these label names exist: `route_template`, `status_class`, `event`, `role`, `mode`, `version`, `collector` (plus `le`). Route labels are **route templates**, never raw paths; unknown paths collapse to `unmatched`. Names matching user, email, ip, client, session, token, cookie, path, url, agent, order, account, password, secret, hash, key, address, host, error, message or timestamp are refused everywhere, in metrics and in dashboard queries. Values come from fixed sets, so an attacker cannot create series (tested with hundreds of hostile logins, paths, hosts and cookies).
+Only these label names exist: `route_template`, `status_class`, `event`, `role`, `mode`, `version`, `collector`, `state`, `code` (plus `le`). Route labels are **route templates**, never raw paths; unknown paths collapse to `unmatched`. Names matching user, email, ip, client, session, token, cookie, path, url, agent, order, account, password, secret, hash, key, address, host, error, message or timestamp are refused everywhere, in metrics and in dashboard queries. Values come from fixed sets, so an attacker cannot create series (tested with hundreds of hostile logins, paths, hosts and cookies).
 
 ### Reserved, not implemented
-The Master Contract lists `tradingdots_bot_*` (ticks, freshness, reconciliation, risk rejections, circuit breaker, kill switch, open orders, order intents/events, deployed/reserve, P&L, drawdown, grid cycles, fees, API requests/errors), `tradingdots_pair_*` and `tradingdots_llm_*`. **None of these has a source yet, so none is published** (only `tradingdots_bot_info`, which is a configuration fact). Each will be added in the same change as the component that produces it. A test fails if any of them appears early.
+The Master Contract lists `tradingdots_bot_*` (ticks, freshness, reconciliation, risk rejections, circuit breaker, kill switch, open orders, order intents/events, deployed/reserve, P&L, drawdown, grid cycles, fees, API requests/errors), and `tradingdots_llm_*`. **None of these has a source yet, so none is published** (only `tradingdots_bot_info`, which is a configuration fact). Each will be added in the same change as the component that produces it. A test fails if any of them appears early. (`tradingdots_pair_candidates_total` and `tradingdots_pair_state_total` from the contract list are published since Phase 4, because the pair tables are their real source.)
 
 ## Dashboards (Grafana, provisioned as code, read-only)
 Overview, Risk and Failsafes, Data Health, Execution and Reconciliation, VPS and Container Health (`infra/monitoring/grafana/dashboards/`). Risk and Failsafes shows the *security* failsafes that exist today; Data Health shows the database and the monitoring pipeline; Execution and Reconciliation is deliberately just context plus an explanation, because there is nothing to measure. Every panel names its source; a test checks that every query parses and uses only metrics that exist, and the queries are also executed against a real Prometheus.

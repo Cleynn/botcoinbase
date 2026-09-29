@@ -5,9 +5,9 @@ Update this file at the end of every phase or session. Master Contract and `docs
 ## Project state
 - Repository: `cleynn/botcoinbase`
 - Branch: `claude/epic-carson-18byfr`
-- Commit: `eef7311` (Phase 3: monitoring); previous: `7091205` (Phase 2), `09c9d9c` (Phase 1)
+- Phase 5 (market data, backtest, paper) committed on top of Phase 4 (pairs), on top of `eef7311` (Phase 3), `7091205` (Phase 2), `09c9d9c` (Phase 1); see `git log`
 - Tag `td-3.1`: local only; the tag push fails ("remote hung up"), do not retry without a policy change
-- Package version: 0.3.0
+- Package version: 0.4.0 (not bumped in Phase 5); schema version 3 (migration `0003_market.sql`)
 - Mode: BACKTEST only
 - Live trading: BLOCKED
 - Gate: PAPER ONLY. Not approved for the next phase.
@@ -28,13 +28,21 @@ Update this file at the end of every phase or session. Master Contract and `docs
   - Validators `make verify-monitoring-config` and `make monitoring-status`.
   - Docs: `docs/monitoring.md`, `alert-policy.md`, `grafana-access.md`, DEC-011/012.
 
+- Phase 4: public product discovery, pair policy, 14-check validation with stored reasons, DB-enforced lifecycle, Pairs UI/API, full-chain disable/archive/activate, host CLI (`make pairs-*`), egress allowlist proxy. Activation is wired but REFUSED (no bot state). Fees must be operator-attested in `config/pair-policy.yaml` or every validation is INCONCLUSIVE. See `docs/pair-management.md`, DEC-013/014.
+
+- Phase 5: candles/importer/validation, checksummed Parquet snapshots, deterministic grid strategy, fee-aware backtest + walk-forward, shared trader, local persisted paper exchange, immutable JSON/Markdown reports, Reports pages, read-only metrics, `batch` service and `make market-*`/`backtest`/`paper-*`. See `docs/backtest-and-paper.md`, DEC-015/016. Example report (FICTIONAL): `docs/examples/`.
+
 ## Verified
+- Phase 5: 1400 tests passed (0 skipped); real-process + browser check 16/16 on SYNTHETIC data; migration 0003 rollback verified.
+- Phase 4: 1200 tests passed (0 skipped), real-browser check 12/12 against SYNTHETIC Coinbase data.
 - `ruff format`, `ruff check`, `mypy app scripts`: clean.
 - Full `pytest`: 782 passed, including real `promtool` rule tests and a real Prometheus end-to-end scrape (needs `TD_PROMETHEUS_DIR` and `TD_NODE_EXPORTER_DIR`; without them those tests skip).
 - Full-stack check (real app process, Chromium, real Prometheus and node_exporter): 20/20. 28 rules healthy, 51 dashboard queries execute.
 - `make verify-security-config` and `make verify-monitoring-config` pass with a generated `.env` (deleted afterwards).
 
 ## Not yet verified
+- Phase 5: real Coinbase candle shapes (AS-C1), Docker start of `batch`, `/data` volume permissions, `docker compose config`. Strategy and fee model are assumptions; no result predicts real performance.
+- Phase 4: real Coinbase response shapes (AS-C1; fixtures are synthetic), Docker start of `egress-proxy`/`pairs`, proxy vs the live host.
 - No Docker daemon was available: container start and health, Caddy proxying Grafana, node-exporter host mounts, cAdvisor and resource sizing are untested.
 - Grafana was never run (download host blocked). Dashboards were validated structurally and by running every query against real Prometheus. Provisioning, rendering and the admin-reset command are unverified.
 - `docker compose config` (including `--profile cadvisor`) has not been run.
@@ -44,7 +52,7 @@ Update this file at the end of every phase or session. Master Contract and `docs
 - The `td-3.1` tag push is blocked by the remote.
 
 ## Next task
-- Await the user's next phase prompt. Do not start bot components without one.
+- Await the user's next phase prompt (Phase 5 gate: PAPER ONLY, LIVE TRADING BLOCKED). Do not start bot components without one.
 - Before any phase that builds bot components, decide the DEC-000 acknowledgement.
 - When a bot component is built, publish its metrics from the Master Contract list only. `tradingdots_bot_*` (except `bot_info`), `pair_*` and `llm_*` are reserved and currently not published; `tests/security/test_metrics_secret_redaction.py` will need a deliberate update.
 

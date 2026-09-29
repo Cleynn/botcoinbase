@@ -548,6 +548,17 @@ class AuthService:
         earliest = self._clock.now() - timedelta(seconds=self._s.reauth_window_seconds)
         return repos.sessions.consume_reauth(ctx.session.id, earliest)
 
+    def reauth_is_fresh(self, ctx: AuthContext) -> bool:
+        """Read-only: is a reauthentication currently available for one sensitive action?"""
+        now = self._clock.now()
+        with self._storage.tx() as repos:
+            fresh = repos.sessions.get_by_token_hash(ctx.session.token_hash)
+        return bool(
+            fresh
+            and fresh.reauth_at
+            and now - fresh.reauth_at < timedelta(seconds=self._s.reauth_window_seconds)
+        )
+
     @staticmethod
     def revoke_phrase(target: User) -> str:
         return f"REVOKE SESSIONS FOR {target.username.upper()}"

@@ -6,6 +6,7 @@ import ipaddress
 import os
 import re
 from collections.abc import Mapping
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
@@ -38,6 +39,8 @@ _ENV_FIELDS = {
     "TD_DB_USER": "database.user",
     "TD_DB_PASSWORD": "database.password",
     "TD_METRICS_BIND": "monitoring.bind_address",
+    "TD_EGRESS_PROXY": "exchange.egress_proxy",
+    "TD_DATA_DIR": "data.data_dir",
 }
 # Accepted but not mapped onto Settings (used by profile selection, the migrate command and
 # environment-file validation).
@@ -166,6 +169,218 @@ class DatabaseSettings(BaseModel):
         return self
 
 
+def _bounded(name: str, value: Decimal, low: str, high: str) -> Decimal:
+    if not Decimal(low) <= value <= Decimal(high):
+        raise ValueError(f"{name} must be between {low} and {high}")
+    return value
+
+
+class FeePolicy(BaseModel):
+    """Operator-attested fees. No primary fee schedule exists (CF-15), so nothing is assumed.
+
+    Until `operator_maker_rate` and `attested_on` are set, and while the attestation is older than
+    `review_interval_days`, the fee-viability check is INCONCLUSIVE and no pair can pass.
+    Rates are fractions of notional (0.006 = 0.60%), as strings.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operator_maker_rate: Decimal | None = None
+    attested_on: date | None = None
+    review_interval_days: int = Field(default=30, ge=1, le=90)
+    stress_maker_rate: Decimal = Decimal("0.006")
+    min_net_edge: Decimal = Decimal("0.001")
+
+    @field_validator("operator_maker_rate", "stress_maker_rate", "min_net_edge", mode="before")
+    @classmethod
+    def _no_float(cls, value: Any) -> Any:
+        return _reject_float(value)
+
+    @model_validator(mode="after")
+    def _sane(self) -> FeePolicy:
+        if self.operator_maker_rate is not None:
+            _bounded("operator_maker_rate", self.operator_maker_rate, "0", "0.02")
+        _bounded("stress_maker_rate", self.stress_maker_rate, "0.001", "0.02")
+        _bounded("min_net_edge", self.min_net_edge, "0", "0.05")
+        if (
+            self.operator_maker_rate is not None
+            and self.operator_maker_rate > self.stress_maker_rate
+        ):
+            raise ValueError("operator_maker_rate must not exceed stress_maker_rate")
+        if (self.operator_maker_rate is None) != (self.attested_on is None):
+            raise ValueError("operator_maker_rate and attested_on must be set together")
+        return self
+
+
+class ValidationPolicy(BaseModel):
+    """Pair-validation thresholds. Each has bounds so configuration cannot loosen them absurdly."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    ttl_hours: int = Field(default=24, ge=1, le=168)
+    max_metadata_age_seconds: int = Field(default=3600, ge=60, le=86400)
+    max_clock_offset_seconds: int = Field(default=5, ge=1, le=30)
+    min_history_days: int = Field(default=90, ge=30, le=365)
+    max_missing_history_days: int = Field(default=2, ge=0, le=10)
+    quality_window_candles: int = Field(default=288, ge=60, le=350)
+    max_gap_ratio: Decimal = Decimal("0.10")
+    max_stale_seconds: int = Field(default=900, ge=300, le=3600)
+    max_candle_jump_ratio: Decimal = Decimal("0.25")
+    max_spread_bps: Decimal = Decimal("30")
+    min_depth_quote: Decimal = Decimal("250")
+    depth_band_ratio: Decimal = Decimal("0.01")
+    book_max_age_seconds: int = Field(default=60, ge=5, le=300)
+    max_tick_ratio: Decimal = Decimal("0.0005")
+
+    @field_validator(
+        "max_gap_ratio",
+        "max_candle_jump_ratio",
+        "max_spread_bps",
+        "min_depth_quote",
+        "depth_band_ratio",
+        "max_tick_ratio",
+        mode="before",
+    )
+    @classmethod
+    def _no_float(cls, value: Any) -> Any:
+        return _reject_float(value)
+
+    @model_validator(mode="after")
+    def _sane(self) -> ValidationPolicy:
+        _bounded("max_gap_ratio", self.max_gap_ratio, "0", "0.25")
+        _bounded("max_candle_jump_ratio", self.max_candle_jump_ratio, "0.02", "0.5")
+        _bounded("max_spread_bps", self.max_spread_bps, "1", "100")
+        _bounded("min_depth_quote", self.min_depth_quote, "35", "1000000")
+        _bounded("depth_band_ratio", self.depth_band_ratio, "0.001", "0.05")
+        _bounded("max_tick_ratio", self.max_tick_ratio, "0.00001", "0.005")
+        return self
+
+
+class ExchangeSettings(BaseModel):
+    """Public Coinbase client settings. The base URL is a code constant, never configuration."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    egress_proxy: str | None = None
+    timeout_seconds: int = Field(default=10, ge=2, le=30)
+    max_response_bytes: int = Field(default=8 * 1024 * 1024, ge=65536, le=32 * 1024 * 1024)
+    requests_per_second: int = Field(default=4, ge=1, le=5)
+
+    @field_validator("egress_proxy")
+    @classmethod
+    def _proxy(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if not re.fullmatch(r"http://[A-Za-z0-9.-]{1,253}:[0-9]{2,5}", value):
+            raise ValueError("egress_proxy must look like http://host:port without credentials")
+        return value
+
+
+class StrategyPolicy(BaseModel):
+    """Deterministic grid strategy parameters (five-minute candles). Bounded, Decimal, no floats."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    ema_fast: int = Field(default=48, ge=5, le=1000)
+    ema_slow: int = Field(default=288, ge=20, le=5000)
+    atr_period: int = Field(default=48, ge=5, le=1000)
+    efficiency_lookback: int = Field(default=288, ge=20, le=5000)
+    min_history_candles: int = Field(default=600, ge=100, le=20000)
+    max_trend_separation: Decimal = Decimal("0.01")
+    max_efficiency_ratio: Decimal = Decimal("0.30")
+    band_atr_multiple: Decimal = Decimal("6")
+    min_band_ratio: Decimal = Decimal("0.02")
+    max_band_ratio: Decimal = Decimal("0.20")
+    breakout_buffer: Decimal = Decimal("0.01")
+    assumed_spread_bps: Decimal = Decimal("10")
+    assumed_slippage_bps: Decimal = Decimal("5")
+    safety_margin: Decimal = Decimal("0.001")
+
+    @field_validator(
+        "max_trend_separation",
+        "max_efficiency_ratio",
+        "band_atr_multiple",
+        "min_band_ratio",
+        "max_band_ratio",
+        "breakout_buffer",
+        "assumed_spread_bps",
+        "assumed_slippage_bps",
+        "safety_margin",
+        mode="before",
+    )
+    @classmethod
+    def _no_float(cls, value: Any) -> Any:
+        return _reject_float(value)
+
+    @model_validator(mode="after")
+    def _sane(self) -> StrategyPolicy:
+        if self.ema_fast >= self.ema_slow:
+            raise ValueError("ema_fast must be shorter than ema_slow")
+        _bounded("max_trend_separation", self.max_trend_separation, "0.001", "0.05")
+        _bounded("max_efficiency_ratio", self.max_efficiency_ratio, "0.05", "0.6")
+        _bounded("band_atr_multiple", self.band_atr_multiple, "2", "20")
+        _bounded("min_band_ratio", self.min_band_ratio, "0.005", "0.5")
+        _bounded("max_band_ratio", self.max_band_ratio, "0.01", "0.5")
+        if self.min_band_ratio >= self.max_band_ratio:
+            raise ValueError("min_band_ratio must be below max_band_ratio")
+        _bounded("breakout_buffer", self.breakout_buffer, "0.001", "0.1")
+        _bounded("assumed_spread_bps", self.assumed_spread_bps, "1", "200")
+        _bounded("assumed_slippage_bps", self.assumed_slippage_bps, "0", "200")
+        _bounded("safety_margin", self.safety_margin, "0", "0.05")
+        return self
+
+
+class BacktestPolicy(BaseModel):
+    """Conservative simulation assumptions, shared by the backtest and the paper exchange."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    fill_volume_participation: Decimal = Decimal("0.10")
+    adverse_bps: Decimal = Decimal("5")
+    max_order_age_candles: int = Field(default=2016, ge=12, le=100000)
+    max_gap_candles: int = Field(default=12, ge=1, le=1000)
+    drawdown_stop_ratio: Decimal = Decimal("0.10")
+    walk_forward_train_candles: int = Field(default=4032, ge=500, le=100000)
+    walk_forward_test_candles: int = Field(default=2016, ge=100, le=100000)
+
+    @field_validator(
+        "fill_volume_participation", "adverse_bps", "drawdown_stop_ratio", mode="before"
+    )
+    @classmethod
+    def _no_float(cls, value: Any) -> Any:
+        return _reject_float(value)
+
+    @model_validator(mode="after")
+    def _sane(self) -> BacktestPolicy:
+        _bounded("fill_volume_participation", self.fill_volume_participation, "0.001", "0.5")
+        _bounded("adverse_bps", self.adverse_bps, "0", "200")
+        _bounded("drawdown_stop_ratio", self.drawdown_stop_ratio, "0.01", "0.5")
+        return self
+
+
+class DataSettings(BaseModel):
+    """Where frozen datasets live and how the importer behaves."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    data_dir: str = "/data"
+    history_days: int = Field(default=90, ge=7, le=365)
+    max_attempts: int = Field(default=3, ge=1, le=5)
+    backoff_seconds: Decimal = Decimal("0.5")
+
+    @field_validator("backoff_seconds", mode="before")
+    @classmethod
+    def _no_float(cls, value: Any) -> Any:
+        return _reject_float(value)
+
+    @field_validator("data_dir")
+    @classmethod
+    def _dir(cls, value: str) -> str:
+        if not re.fullmatch(r"/[A-Za-z0-9_./-]{0,200}", value) or ".." in value.split("/"):
+            raise ValueError("data_dir must be an absolute path without '..'")
+        return value
+
+
 class PairPolicy(BaseModel):
     """Static pair/capital policy. Values may only tighten the hard ceilings in app.constants."""
 
@@ -180,6 +395,11 @@ class PairPolicy(BaseModel):
     max_active_pairs: int
     regridding_enabled: bool = False
     capital_growth_enabled: bool = False
+    max_pairs: int = Field(default=20, ge=1, le=20)
+    validation: ValidationPolicy = ValidationPolicy()
+    fees: FeePolicy = FeePolicy()
+    strategy: StrategyPolicy = StrategyPolicy()
+    backtest: BacktestPolicy = BacktestPolicy()
 
     @field_validator("total_capital", "min_reserve", "max_deployment", mode="before")
     @classmethod
@@ -224,6 +444,8 @@ class Settings(BaseModel):
     auth: AuthSettings = AuthSettings()
     database: DatabaseSettings = DatabaseSettings()
     monitoring: MonitoringSettings = MonitoringSettings()
+    exchange: ExchangeSettings = ExchangeSettings()
+    data: DataSettings = DataSettings()
     pair_policy: PairPolicy
 
     @field_validator("trusted_proxies")

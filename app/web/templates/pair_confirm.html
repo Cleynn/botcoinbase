@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ view.label }}: {{ view.product_id }}</h1>
+<p><a href="/pairs/{{ view.pair_id }}">Back to the pair</a> · current state <strong>{{ view.state }}</strong></p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice">{{ view.warning }}</p>
+
+{% if view.blockers %}
+<section aria-labelledby="blk-h">
+  <h2 id="blk-h">Refused right now</h2>
+  <ul>{% for code in view.blockers %}<li><code>{{ code }}</code>: {{ pair_reason(code) }}</li>{% endfor %}</ul>
+  <p>No confirmation is offered while a guard refuses the action.</p>
+</section>
+{% else %}
+<section aria-labelledby="pw-h">
+  <h2 id="pw-h">Step 1: confirm your password</h2>
+  <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
+  <form method="post" action="/pairs/{{ view.pair_id }}/{{ view.action }}/reauth" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <input type="hidden" name="version" value="{{ view.version }}">
+    <p><label for="reauth_password">Password</label>
+       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+    <p><button type="submit">Confirm password</button></p>
+  </form>
+</section>
+<section aria-labelledby="ph-h">
+  <h2 id="ph-h">Step 2: type the phrase</h2>
+  <form method="post" action="/pairs/{{ view.pair_id }}/{{ view.action }}/confirm" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <input type="hidden" name="version" value="{{ view.version }}">
+    <p><label for="confirmation">Type <code>{{ view.phrase }}</code> exactly</label>
+       <input id="confirmation" name="confirmation" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="128" required></p>
+    <p><button type="submit">{{ view.label }}</button></p>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

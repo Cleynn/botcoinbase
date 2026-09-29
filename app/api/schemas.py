@@ -51,3 +51,21 @@ class AuditQuery(BaseModel):
 
     code: str | Literal[""] = Field(default="", max_length=64)
     before: int | None = Field(default=None, ge=1, le=2**62)
+
+
+class ProposeForm(_Form):
+    product_id: UUID  # the discovered product's UUID, never free text
+
+
+class PairActionForm(_Form):
+    version: int = Field(ge=1, le=2**31 - 1)
+
+
+class PairReauthForm(_Form):
+    password: str = Field(min_length=1, max_length=1024)
+    version: int = Field(ge=1, le=2**31 - 1)
+
+
+class PairConfirmForm(_Form):
+    version: int = Field(ge=1, le=2**31 - 1)
+    confirmation: str = Field(max_length=128)

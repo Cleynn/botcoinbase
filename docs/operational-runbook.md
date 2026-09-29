@@ -71,3 +71,20 @@ Prometheus is capped at 30 days and 15 GB (expected use is far lower; estimate).
 
 ## No second host, no off-host backups
 By owner decision (DEC-006) neither is implemented or planned. Host loss means loss of local data.
+
+## Pairs (Phase 4)
+1. Set the fee attestation in `config/pair-policy.yaml` (`fees.operator_maker_rate`, `fees.attested_on`) from your own Coinbase fee tier; renew every 30 days. Without it every validation is INCONCLUSIVE.
+2. `make pairs-discover`, then `make pairs-seed` (queues validation), then `make pairs-validate`. Check `/pairs`.
+3. A pair is PAPER_ELIGIBLE only after a full PASS. It is never activated automatically; activation is unavailable until the bot phases exist.
+4. Evidence expires after 24 h; `make pairs-validate` re-queues expired pairs' validation (they move to VALIDATING, then run).
+5. Disable/archive: open the pair, choose the action, confirm your password, type the phrase. An active or previously active pair cannot be archived.
+6. Rollback of this phase: `git revert`; `python -m app.storage.database rollback --to 1 --i-understand-data-loss` (development only) drops pair tables; audit events already written stay.
+
+## Phase 5: market data, backtest, paper (operator steps)
+1. `make pairs-discover`, seed, validate (Phase 4); attest fees in `config/pair-policy.yaml`.
+2. `make market-import PRODUCT=P` (dry run: read the counts), then `make market-import PRODUCT=P COMMIT=1`.
+3. `make market-quality PRODUCT=P` to store a data-quality report; investigate gaps and conflicts, do not fill them.
+4. `make market-snapshot PRODUCT=P`, then `make backtest SNAPSHOT=<id>` (and `WALK=1`). Read the stress column.
+5. Paper: activate the pair in the UI (needs `TD_MODE=PAPER`, paper session PAUSED), `paper start`, run `paper step` after each import, `paper stop` to pause (orders are cancelled, inventory is kept).
+6. A HALTED session needs a person: review, then `paper start --acknowledge-halt`.
+Snapshot files are read-only; back up the `datasets` volume with the database. Never edit a snapshot: a changed file is refused.

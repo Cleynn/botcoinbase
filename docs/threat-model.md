@@ -45,3 +45,21 @@ Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange fail
 | T29 | Monitoring outage affecting the application | Listener failure is non-fatal; snapshot and summary never raise; database outage becomes `db_up 0` | Tested |
 | T30 | Misleading "all clear" from missing data | Absent series instead of zeros; TargetDown/absent alerts; dashboards state what is not measured | Tested |
 | T31 | No alert delivery (by design) | Alerts are only visible if someone looks: daily check in the runbook; residual risk accepted | Accepted |
+
+| T32 | Pair injection (a crafted product or ID becomes a pair) | Only a discovered product UUID can be proposed; product ids match a fixed pattern; alias/status reduced to a safe vocabulary; duplicates and the 20-pair cap enforced under an advisory lock | Tested |
+| T33 | Activation or archive by a stolen session or forged request | ADMIN + CSRF/Origin + fresh single-use password + exact typed phrase + version check; each denial audited | Tested |
+| T34 | Two active pairs (race) | Unique index over the active states, advisory lock, service guard; 5-way concurrent test yields one active pair | Tested |
+| T35 | Stale or changed metadata treated as valid | PASS run must be the current evidence, unexpired, on the current snapshot, metadata within the age limit | Tested |
+| T36 | Exchange content as XSS | Parse-time reduction plus autoescape; hostile stored content tested on every pair page | Tested |
+| T37 | SSRF / open proxy via the runner | Fixed client host and paths, no redirects, proxy allows one CONNECT target and rejects private resolutions | Tested; proxy not run in a container here |
+| T38 | Wrongly optimistic fee model | Fees must be operator-attested and re-attested; model version recorded; both attested and stress rates required | Assumption documented (FEE_MODEL_V1) |
+
+## Phase 5 additions
+| Threat | Control | Residual |
+|---|---|---|
+| Poisoned or malformed candle data | Validation excludes and records; conflicts never overwrite; nothing invented | A consistently wrong upstream cannot be detected |
+| Tampered snapshot file | Two checksums verified on load; files read-only; manifests | Someone with DB write access could change both row and file |
+| Paper results mistaken for real | BACKTEST/PAPER labels, DB label CHECK, banner, limitations text | Human interpretation |
+| Overfitting via parameter search | Walk-forward with out-of-sample reporting; tiny grid | Backtests remain optimistic in ways not modelled |
+| Runaway paper capital | Trader invariants plus DB trigger constants | None known |
+| Fee assumptions wrong | Attested fees required; stress scenario at 0.6% | Attestation is a human claim |

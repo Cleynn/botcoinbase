@@ -32,7 +32,17 @@ docker compose run --rm -it ctl python scripts/create_admin.py   # first ADMIN, 
 ## Make targets
 `format lint typecheck test up down logs health verify-security-config verify-monitoring-config monitoring-status` (plus `verify-security-config-example`).
 
+## Pairs (Phase 4)
+Discovery, validation and lifecycle of USDC spot pairs from public Coinbase data: see `docs/pair-management.md`. Nothing here trades, reads an account or enables live trading.
+
 ## Layout
 `app/` application, `config/` YAML profiles, `infra/` Caddy and Postgres init, `scripts/` health,
 bootstrap and security validation, `tests/` (`tests/pending/` holds not-yet-runnable skeletons for later
 phases), `docs/`, `baseline/`.
+
+## Market data, backtests, paper trading (Phase 5)
+Public candle import (dry run unless `--commit`), checksummed Parquet snapshots, a deterministic grid
+strategy, a fee-aware backtest with walk-forward, and a local persisted paper exchange, driven by the
+`batch` service (`make market-import`, `market-snapshot`, `backtest`, `paper-*`). No private
+execution, no live mode. See `docs/backtest-and-paper.md`; example report (FICTIONAL, synthetic):
+`docs/examples/backtest-report-FICTIONAL.md`.

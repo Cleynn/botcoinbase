@@ -14,7 +14,7 @@ import secrets
 import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -28,7 +28,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from app.api.app import create_app
 from app.auth.password import PasswordService
-from app.config import AuthSettings, DatabaseSettings, Settings, load_settings
+from app.config import AuthSettings, DatabaseSettings, FeePolicy, Settings, load_settings
 from app.domain.enums import Role
 from app.domain.models import User
 from app.storage.database import OwnerTarget, Storage, migrate
@@ -202,13 +202,22 @@ def clock() -> FakeClock:
 @pytest.fixture
 def settings(test_env: dict[str, str], db: TestDb) -> Settings:
     base = load_settings(test_env)
-    return base.model_copy(
+    configured = base.model_copy(
         update={
             "database": db.settings_for("td_app"),
             "auth": FAST_AUTH,
             "trusted_proxies": ("10.0.0.0/8",),
         }
     )
+    return with_fees(configured, ATTESTED_FEES)
+
+
+ATTESTED_FEES = FeePolicy(operator_maker_rate="0.002", attested_on=date(2026, 9, 20))
+
+
+def with_fees(settings: Settings, fees: FeePolicy) -> Settings:
+    policy = settings.pair_policy.model_copy(update={"fees": fees})
+    return settings.model_copy(update={"pair_policy": policy})
 
 
 @pytest.fixture
@@ -387,3 +396,94 @@ def plant_cookie(client: TestClient, name: str, value: str) -> None:
     for existing in [ck for ck in client.cookies.jar if ck.name == name]:
         client.cookies.jar.clear(existing.domain, existing.path, existing.name)
     client.cookies.set(name, value, domain=COOKIE_DOMAIN, path="/")
+
+
+# ---------------------------------------------------------------- Phase 4: pairs
+@pytest.fixture
+def coinbase(clock: FakeClock) -> Any:
+    from tests.coinbase_fakes import FakeCoinbase
+
+    return FakeCoinbase(clock.now)
+
+
+@pytest.fixture
+def ctl_storage(settings: Settings, db: TestDb) -> Storage:
+    """Storage connected as td_ctl, the host CLI role that runs discovery and validation."""
+    return Storage(settings.model_copy(update={"database": db.settings_for("td_ctl")}).database)
+
+
+@pytest.fixture
+def runner(settings: Settings, ctl_storage: Storage, clock: FakeClock, coinbase: Any) -> Any:
+    from app.pairs.runner import PairRunner
+
+    return PairRunner(storage=ctl_storage, clock=clock, settings=settings, client=coinbase.client())
+
+
+@pytest.fixture
+def open_gate() -> Any:
+    """A runtime gate that permits activation and reports pairs clean (tests only)."""
+    from app.storage.repositories import Repos
+
+    class OpenGate:
+        clean = True
+
+        def activation_blockers(self, repos: Repos, pair: Any) -> tuple[str, ...]:
+            return ()
+
+        def is_clean(self, repos: Repos, pair: Any) -> tuple[bool, tuple[str, ...]]:
+            return (True, ()) if self.clean else (False, ("NOT_CLEAN",))
+
+    return OpenGate()
+
+
+@pytest.fixture
+def open_app(settings: Settings, storage: Storage, clock: FakeClock, open_gate: Any) -> Any:
+    return create_app(settings, storage=storage, clock=clock, pair_gate=open_gate)
+
+
+@pytest.fixture
+def env(
+    storage: Storage,
+    ctl_storage: Storage,
+    clock: FakeClock,
+    settings: Settings,
+    coinbase: Any,
+    admin: Account,
+    open_gate: Any,
+) -> Any:
+    """Service-level harness with an OPEN runtime gate (tests only)."""
+    from tests.pair_env import build_env
+
+    return build_env(
+        storage=storage,
+        ctl_storage=ctl_storage,
+        clock=clock,
+        settings=settings,
+        coinbase=coinbase,
+        admin=admin,
+        gate=open_gate,
+    )
+
+
+@pytest.fixture
+def closed_env(
+    storage: Storage,
+    ctl_storage: Storage,
+    clock: FakeClock,
+    settings: Settings,
+    coinbase: Any,
+    admin: Account,
+) -> Any:
+    """Like `env` but with the production default gate (no bot state: activation refused)."""
+    from app.pairs.service import UnavailableRuntimeGate
+    from tests.pair_env import build_env
+
+    return build_env(
+        storage=storage,
+        ctl_storage=ctl_storage,
+        clock=clock,
+        settings=settings,
+        coinbase=coinbase,
+        admin=admin,
+        gate=UnavailableRuntimeGate(settings.mode),
+    )

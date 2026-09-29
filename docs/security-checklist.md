@@ -54,3 +54,21 @@
 - Time comes from the application clock, not the database clock.
 - No second host: audit anchoring and off-host backups do not exist (DEC-006). A fully privileged database owner can still rewrite the chain undetectably.
 - VIEWER accounts cannot be created yet (no allowed provisioning path); the role is implemented and tested.
+
+## Phase 4 (pairs)
+- [x] No private Coinbase call, credential, signing or order code exists (source scan tests); the web tier never imports the client.
+- [x] Only `egress-proxy` has a route out, allowing `CONNECT api.coinbase.com:443` only, refusing non-public resolved addresses.
+- [x] Lifecycle enforced in the database: transition table + trigger per actor class, no DELETE, history row required, one active pair unique index (covers `LIVE_ACTIVE`), append-only evidence.
+- [x] Disable/archive/activate: ADMIN + CSRF + fresh single-use reauth + exact typed phrase + stale-version check + audit (denials audited too).
+- [x] Exchange strings are sanitised at parse time and escaped at render time (both tested).
+- [ ] Not verified: real Coinbase response shapes, container start of `egress-proxy`/`pairs`, proxy behaviour against the live host.
+
+## Phase 5
+- [x] No private API, order or credential code in market/backtest/strategy/paper/reports (source test).
+- [x] Simulation packages import no network code; only the importer and pair runner use the public client.
+- [x] Web tier imports no market/paper/backtest/strategy code (database-only gate excepted).
+- [x] `td_app` SELECT-only on all new tables; `td_ctl` cannot update or delete candles, fills, ledger entries, reports or snapshots.
+- [x] Capital ceilings (50/15/35) enforced by database triggers in addition to the trader.
+- [x] Snapshot integrity verified on every load (size, file hash, content hash).
+- [x] Report downloads are `text/plain` attachments; report text is escaped.
+- [ ] `batch` container start, egress through the proxy, `/data` volume permissions: NOT verified (no Docker daemon).

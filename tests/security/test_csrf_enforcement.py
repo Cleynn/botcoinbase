@@ -22,6 +22,12 @@ def test_every_state_changing_route_is_covered(app: Any) -> None:
     assert unsafe_paths(app) == [
         "/login",
         "/logout",
+        "/pairs/candidates",
+        "/pairs/{pair_id}/deactivate",
+        "/pairs/{pair_id}/pause",
+        "/pairs/{pair_id}/validate",
+        "/pairs/{pair_id}/{action}/confirm",
+        "/pairs/{pair_id}/{action}/reauth",
         "/security/password",
         "/security/reauth",
         "/security/sessions/revoke",

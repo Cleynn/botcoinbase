@@ -8,3 +8,61 @@ grid_levels: 3
 max_active_pairs: 1
 regridding_enabled: false
 capital_growth_enabled: false
+max_pairs: 20              # non-archived pair rows (candidates included); hard ceiling 20
+
+# Validation thresholds (Phase 4). Every value is bounded in app/config.py so configuration
+# cannot loosen a check absurdly. Ratios and rates are strings (Decimal), never floats.
+validation:
+  ttl_hours: 24                    # a PASS run stops counting as VALID after this long
+  max_metadata_age_seconds: 3600   # product metadata older than this is stale
+  max_clock_offset_seconds: 5      # local clock vs Coinbase /time
+  min_history_days: 90             # daily candles required
+  max_missing_history_days: 2
+  quality_window_candles: 288      # newest closed five-minute candles inspected (24 h)
+  max_gap_ratio: "0.10"            # missing five-minute buckets in that window
+  max_stale_seconds: 900           # newest closed candle may not be older than this
+  max_candle_jump_ratio: "0.25"    # close-to-close move between adjacent candles
+  max_spread_bps: "30"
+  min_depth_quote: "250"           # USDC on each side within depth_band_ratio of mid
+  depth_band_ratio: "0.01"
+  book_max_age_seconds: 60
+  max_tick_ratio: "0.0005"         # price_increment / price
+
+# Fees are OPERATOR-ATTESTED. No primary Coinbase fee schedule has been retrieved (CF-15), so no
+# rate is assumed here. Until both fields below are set, and while the attestation is older than
+# review_interval_days, the FEE_VIABILITY check is INCONCLUSIVE and no pair can become
+# PAPER_ELIGIBLE. Rates are fractions of notional: "0.006" = 0.60% per side.
+fees:
+  operator_maker_rate: null
+  attested_on: null
+  review_interval_days: 30
+  stress_maker_rate: "0.006"
+  min_net_edge: "0.001"
+
+# Deterministic grid strategy (Phase 5, five-minute candles). Bounded in app/config.py.
+# NO_TRADE is a normal outcome: the strategy only trades a clear, wide-enough range.
+strategy:
+  ema_fast: 48
+  ema_slow: 288
+  atr_period: 48
+  efficiency_lookback: 288
+  min_history_candles: 600
+  max_trend_separation: "0.01"     # |EMA fast - EMA slow| / price above this = trending, NO_TRADE
+  max_efficiency_ratio: "0.30"     # Kaufman ratio above this = directional, NO_TRADE
+  band_atr_multiple: "6"
+  min_band_ratio: "0.02"
+  max_band_ratio: "0.20"
+  breakout_buffer: "0.01"          # close beyond the band by this ratio stops the grid
+  assumed_spread_bps: "10"
+  assumed_slippage_bps: "5"
+  safety_margin: "0.001"
+
+# Simulation assumptions shared by the backtest and the paper exchange. All pessimistic.
+backtest:
+  fill_volume_participation: "0.10"  # at most 10% of a candle's volume can fill our orders
+  adverse_bps: "5"                   # price must trade this far THROUGH the limit to fill
+  max_order_age_candles: 2016        # stale orders are cancelled (7 days)
+  max_gap_candles: 12                # a data gap longer than 1 hour cancels every order
+  drawdown_stop_ratio: "0.10"        # equity 10% below peak halts trading until acknowledged
+  walk_forward_train_candles: 4032
+  walk_forward_test_candles: 2016

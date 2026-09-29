@@ -64,7 +64,26 @@ EXPECTED = {
     "tradingdots_metrics_scrapes_total",
     "tradingdots_metrics_last_scrape_timestamp_seconds",
     "tradingdots_collector_errors_total",
+    # Phase 4: pair lifecycle (real database counts). The first two are contract names; the
+    # third is an extension whose source (product metadata verification time) is real.
+    "tradingdots_pair_candidates_total",
+    "tradingdots_pair_state_total",
+    "tradingdots_pair_metadata_age_seconds",
+    # Phase 5: real database facts about imports, backtests, reports and the LOCAL paper venue
+    "tradingdots_ingest_last_success_timestamp_seconds",
+    "tradingdots_data_quality_events_total",
+    "tradingdots_backtest_runs_total",
+    "tradingdots_backtest_last_run_timestamp_seconds",
+    "tradingdots_reports_total",
+    "tradingdots_paper_running",
+    "tradingdots_paper_orders",
+    "tradingdots_paper_deployed_quote",
+    "tradingdots_paper_free_cash_quote",
 }
+# Contract names that Phase 4 now publishes because a real source exists.
+PUBLISHED_CONTRACT = {"tradingdots_pair_candidates_total", "tradingdots_pair_state_total"}
+# Gauges that keep a contract `_total` name (they count rows, they are not counters).
+GAUGES_NAMED_TOTAL = PUBLISHED_CONTRACT
 
 
 def parse(body: bytes) -> dict[str, list[tuple[str, dict[str, str], float]]]:
@@ -80,15 +99,23 @@ def test_catalogue_is_exactly_the_reviewed_set() -> None:
 
 
 def test_no_metric_is_invented_for_unfinished_bot_components() -> None:
-    invented = [n for n in CONTRACT_NAMES if n != "tradingdots_bot_info" and n in m.CATALOGUE_NAMES]
+    invented = [
+        n
+        for n in CONTRACT_NAMES
+        if n != "tradingdots_bot_info" and n in m.CATALOGUE_NAMES and n not in PUBLISHED_CONTRACT
+    ]
     assert invented == []
     assert not [
         n
         for n in m.CATALOGUE_NAMES
-        if re.match(
-            r"tradingdots_(bot_(?!info)|pair_|llm_|order|fill|reconcil|kill|breaker|risk)", n
-        )
+        if re.match(r"tradingdots_(bot_(?!info)|llm_|order|fill|reconcil|kill|breaker|risk)", n)
     ]
+    # pair_* is allowed only for the reviewed set above
+    assert {n for n in m.CATALOGUE_NAMES if n.startswith("tradingdots_pair_")} == {
+        "tradingdots_pair_candidates_total",
+        "tradingdots_pair_state_total",
+        "tradingdots_pair_metadata_age_seconds",
+    }
 
 
 def test_catalogue_naming_and_documentation_rules() -> None:
@@ -97,7 +124,8 @@ def test_catalogue_naming_and_documentation_rules() -> None:
         assert re.fullmatch(r"tradingdots_[a-z][a-z0-9_]*", spec.name), spec.name
         assert spec.help and spec.help.endswith("."), spec.name
         assert spec.kind in {"gauge", "counter", "histogram"}
-        assert (spec.kind == "counter") == spec.name.endswith("_total"), spec.name
+        if spec.name not in GAUGES_NAMED_TOTAL:
+            assert (spec.kind == "counter") == spec.name.endswith("_total"), spec.name
         if "timestamp" in spec.name:
             assert spec.name.endswith("_timestamp_seconds")
         if spec.kind == "histogram":
@@ -366,5 +394,9 @@ def test_monitoring_docs_list_every_metric_and_the_reserved_ones_as_absent() -> 
         "### Label policy"
     )[0]
     assert not [
-        n for n in CONTRACT_NAMES if n != "tradingdots_bot_info" and f"`{n}`" in catalogue_table
+        n
+        for n in CONTRACT_NAMES
+        if n != "tradingdots_bot_info"
+        and n not in PUBLISHED_CONTRACT
+        and f"`{n}`" in catalogue_table
     ]

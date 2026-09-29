@@ -34,7 +34,7 @@ from app.domain.models import Clock
 
 logger = logging.getLogger("app")
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 METRICS_PATH = "/metrics"
 # Classic text format: understood by every Prometheus release, including the pinned 2.53 image.
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -155,6 +155,80 @@ CATALOGUE: tuple[MetricSpec, ...] = (
         "tradingdots_audit_last_verified_timestamp_seconds",
         "gauge",
         "When the audit chain was last verified.",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_pair_candidates_total",
+        "gauge",
+        "Pairs that are not archived (candidates and the active pair).",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_pair_state_total",
+        "gauge",
+        "Pairs currently in each lifecycle state (a count, not a counter: contract name).",
+        ("state",),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_pair_metadata_age_seconds",
+        "gauge",
+        "Age of the oldest verified product metadata among non-archived pairs.",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_ingest_last_success_timestamp_seconds",
+        "gauge",
+        "When a candle import last completed without error.",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_data_quality_events_total",
+        "counter",
+        "Data-quality events recorded by candle imports, by event code.",
+        ("code",),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_backtest_runs_total", "counter", "Stored backtest runs.", (), "database"
+    ),
+    MetricSpec(
+        "tradingdots_backtest_last_run_timestamp_seconds",
+        "gauge",
+        "When a backtest was last stored.",
+        (),
+        "database",
+    ),
+    MetricSpec("tradingdots_reports_total", "counter", "Stored reports.", (), "database"),
+    MetricSpec(
+        "tradingdots_paper_running",
+        "gauge",
+        "1 while the local paper session is RUNNING, else 0 (PAPER only).",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_paper_orders",
+        "gauge",
+        "Local paper orders by state (PAPER only, never exchange orders).",
+        ("state",),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_paper_deployed_quote",
+        "gauge",
+        "Paper deployment: open buy reserve plus inventory cost, in USDC (PAPER only).",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_paper_free_cash_quote",
+        "gauge",
+        "Paper cash not reserved by open buys, in USDC (PAPER only).",
         (),
         "database",
     ),

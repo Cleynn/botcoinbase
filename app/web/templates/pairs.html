@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Pairs</h1>
+<p class="notice">Adding a pair creates a candidate only. Validation and activation are separate actions, and nothing on these pages places, changes or cancels an order.</p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+
+<section aria-labelledby="lifecycle-h">
+  <h2 id="lifecycle-h">Lifecycle</h2>
+  <ol class="lifecycle" aria-label="Pair lifecycle">
+    {% for name in view.lifecycle %}
+    <li class="{{ 'blocked' if name in view.unrepresentable else '' }}">{{ name }}{% if name in view.unrepresentable %} <small>(blocked: not available in this build)</small>{% endif %}</li>
+    {% endfor %}
+  </ol>
+  <p>Also: PAUSED, DISABLED, ARCHIVED.</p>
+</section>
+
+<dl class="tiles">
+  <div class="tile"><dt>Active pair</dt><dd>{{ view.active }}</dd></div>
+  <div class="tile"><dt>Open candidates</dt><dd>{{ view.open_count }} of {{ view.max_pairs }}</dd></div>
+  {% for state, n in view.counts %}
+  <div class="tile"><dt>{{ state }}</dt><dd>{{ n }}</dd></div>
+  {% endfor %}
+</dl>
+
+<p><a href="/pairs/products">Discovered products</a>{% if view.is_admin %} (add a candidate from there){% endif %}</p>
+
+<div class="table-wrap">
+  <table>
+    <caption class="visually-hidden">Pairs</caption>
+    <thead><tr><th scope="col">Product</th><th scope="col">State</th><th scope="col">Data basis</th><th scope="col">Latest validation</th><th scope="col">Validated</th><th scope="col">Metadata age</th><th scope="col">Proposed</th></tr></thead>
+    <tbody>
+    {% for r in view.rows %}
+      <tr>
+        <td><a href="/pairs/{{ r.id }}">{{ r.product_id }}</a></td>
+        <td><span class="badge state-{{ r.state|lower }}">{{ r.state }}</span></td>
+        <td>{{ r.basis }}</td>
+        <td>{{ r.validation }}</td>
+        <td>{{ r.validated }}</td>
+        <td>{{ r.metadata_age }}{% if r.metadata_stale %} <strong>(stale)</strong>{% endif %}</td>
+        <td>{{ r.proposed }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7">No pairs yet. Run discovery and seeding from the host, then add candidates from the discovered products.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
