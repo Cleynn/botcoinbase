@@ -234,6 +234,17 @@ class Reconciler:
                         findings.append(_f("ORDER_APPEARED_AFTER_ABSENCE", client_id))
                     continue
                 if attempt.state in TERMINAL_STATES:
+                    if order is not None and order.status in (
+                        "WORKING",
+                        "CANCEL_REQUESTED",
+                        "UNKNOWN",
+                    ):
+                        code = (
+                            "ORDER_MISMATCH" if attempt.state == "REJECTED" else "STATUS_MISMATCH"
+                        )
+                        findings.append(
+                            _f(code, client_id, f"order is {order.status}, attempt {attempt.state}")
+                        )
                     continue
                 if attempt.state == "AUTHORIZED":
                     if order is not None:
