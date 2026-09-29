@@ -168,7 +168,16 @@ class OrderPipeline:
     def submit(
         self, order: OrderProposal, *, source: str, slot: str, book: BookFacts | None
     ) -> PipelineResult:
-        intent = self.create_intent(order, source=source, slot=slot)
+        try:
+            intent = self.create_intent(order, source=source, slot=slot)
+        except psycopg.errors.IntegrityError:
+            # the schema itself refuses this intent (over the hard per-order cap, a venue or order
+            # type that cannot be represented): it was never persisted and nothing was decided
+            with self._storage.tx() as repos:
+                self._record(
+                    repos, Evt.ORDER_RISK_BLOCKED, Res.DENIED, None, reason="INTENT_REFUSED"
+                )
+            return PipelineResult("invalid", None, reasons=("INTENT_REFUSED",))
         return self.process(intent.id, book=book)
 
     def _authorize(
