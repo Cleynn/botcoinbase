@@ -221,6 +221,14 @@ Implemented: pure risk engine, circuit breaker, kill switch, stale data/metadata
 - **Defects found while testing:** an over-cap intent raised instead of being reported; the reconciler did not flag an order wearing the id of a rejected attempt; absence proof could not skip an id a run had named (the database refused the whole run); list results with equal timestamps needed an insertion sequence to order runs.
 - review: SELF. **No independent security review has been performed.**
 
+### DEC-022: Phase 8 verification record
+- Full suite (real PostgreSQL 16, real promtool/Prometheus/node_exporter): 2973 passed and 1 failed on the first run; the failure was a stale assertion in `test_prometheus_scrape.py` (it expected the now-published kill-switch and open-order series to be absent). It was corrected and that file re-run: 48 passed. The rest of the suite was not re-run after that one-line test change. ruff, format and mypy clean.
+- Real processes + Chromium (pgserver DB, real `app.cli serve`, real CLI subprocesses, SYNTHETIC data): 28/28 checks: Bot page state and LIVE TRADING BLOCKED, no order form, RESUME refused with reasons, wrong-case phrase refused without spending the reauth, kill switch activation queues one cancel and changes nothing else, host `recover`/`reconcile` refuse with `NO_EXCHANGE_READER`, cancel command runs, kill release needs its phrase and leaves the bot PAUSED with recovery INCOMPLETE, viewer read-only, no horizontal scroll at 375 px (a real overflow was found and fixed), no CSP violations, every action audited, no password or phrase in the audit log, no order ever created.
+- Fault injection with the scripted FAKE exchange: see the fault matrix in `docs/safety-machinery.md`.
+- Migration 0006 rollback to schema 5 and re-apply verified on a real PostgreSQL.
+- Not verified: any real Coinbase response (AS-C1, AS-C3, AS-C4), client-id scope, the absence proof against a real exchange, WebSocket connectivity (no client exists), Docker start of any service (no Docker daemon), a paper reconciler. Live trading remains BLOCKED; no independent review.
+- review: SELF
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

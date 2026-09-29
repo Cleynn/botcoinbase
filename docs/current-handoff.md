@@ -5,9 +5,9 @@ Update this file at the end of every phase or session. Master Contract and `docs
 ## Project state
 - Repository: `cleynn/botcoinbase`
 - Branch: `claude/epic-carson-18byfr`
-- Phase 7 (imported proposals) committed on top of Phase 6 (read-only review packages), Phase 5 (market data, backtest, paper), Phase 4 (pairs), on top of `eef7311` (Phase 3), `7091205` (Phase 2), `09c9d9c` (Phase 1); see `git log`
+- Phase 8 (safety machinery) committed on top of Phase 7 (imported proposals), Phase 6 (read-only review packages), Phase 5 (market data, backtest, paper), Phase 4 (pairs), on top of `eef7311` (Phase 3), `7091205` (Phase 2), `09c9d9c` (Phase 1); see `git log`
 - Tag `td-3.1`: local only; the tag push fails ("remote hung up"), do not retry without a policy change
-- Package version: 0.4.0 (not bumped in Phases 5 and 6); schema version 5 (migration `0005_proposals.sql`)
+- Package version: 0.4.0 (not bumped in Phases 5 and 6); schema version 6 (migration `0006_safety.sql`)
 - Mode: BACKTEST only
 - Live trading: BLOCKED
 - Gate: PAPER ONLY. Not approved for the next phase.
@@ -36,7 +36,10 @@ Update this file at the end of every phase or session. Master Contract and `docs
 
 - Phase 7: disabled-by-default proposal import: ADMIN chain (CSRF + fresh reauth + phrases), text/plain and JSON only, opaque storage outside the web root, host validation (strict schema, policy, risk), trigger-enforced lifecycle, manual change request and attestations, escaped UNTRUSTED ADVISORY INPUT UI, `proposal validate|cleanup|list`, `make proposal-*`, aggregate metrics. Nothing is ever applied. See `docs/proposals.md`, DEC-019/020; fictional examples in `docs/examples/`.
 
+- Phase 8: risk engine, breaker, kill switch, staleness/anomaly checks, GET-only private read adapter (NullSigner, no credentials), WebSocket hint parser, REST reconciliation, startup recovery, retry policy, ADMIN Bot page (four phrases), live gate that only returns BLOCKED, order path with immutable intents, scripted fake exchange, request-shape sandbox, `safety` host CLI and `make safety-*`, thirteen `tradingdots_bot_*` metrics. No gateway, reader or signer exists in any deployment. See `docs/safety-machinery.md`, DEC-021/022.
+
 ## Verified
+- Phase 8: 2973 passed plus the corrected scrape test (48 passed); real-process + browser check 28/28 on SYNTHETIC data; migration 0006 rollback verified.
 - Phase 7: 2374 tests passed (0 skipped); real-process + browser check 28/28 on SYNTHETIC data; migration 0005 rollback verified.
 - Phase 6: 1603 tests passed (0 skipped); real-process + browser check 25/25 on SYNTHETIC data; byte fuzzing of packages; migration 0004 rollback verified.
 - Phase 5: 1400 tests passed (0 skipped); real-process + browser check 16/16 on SYNTHETIC data; migration 0003 rollback verified.
@@ -47,6 +50,7 @@ Update this file at the end of every phase or session. Master Contract and `docs
 - `make verify-security-config` and `make verify-monitoring-config` pass with a generated `.env` (deleted afterwards).
 
 ## Not yet verified
+- Phase 8: any real Coinbase behaviour (AS-C1, AS-C3, AS-C4), the absence proof against a real exchange, WebSocket connectivity, containers, a paper reconciler; the paper trader honours only kill and breaker.
 - Phase 7: `app`/`batch` sharing the `proposals` volume in real containers (no Docker daemon). Policy is heuristic and over-inclusive; no independent review.
 - Phase 6: `batch`/`app` sharing the `review_packages` volume in real containers (no Docker daemon). No package delete action, no proposal import (baseline Phase 8), no signature or per-package encryption.
 - Phase 5: real Coinbase candle shapes (AS-C1), Docker start of `batch`, `/data` volume permissions, `docker compose config`. Strategy and fee model are assumptions; no result predicts real performance.

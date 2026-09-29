@@ -814,13 +814,11 @@ def test_end_to_end_with_real_prometheus(
         assert instant("tradingdots_bot_info")[0]["metric"]["mode"] == "BACKTEST"
         assert instant("tradingdots_db_up")[0]["value"][1] == "1"
         assert instant("tradingdots_audit_chain_ok")[0]["value"][1] == "1"
-        # Series the collectors must NOT produce because the components do not exist.
-        assert (
-            instant(
-                '{__name__=~"tradingdots_bot_(open_orders|kill_switch_active|reconciliation_age_seconds)"}'
-            )
-            == []
-        )
+        # Phase 8: the control state is real (kill switch off, no open orders); the reconciliation
+        # age is absent because no reconciliation has ever run (never an invented zero).
+        assert instant("tradingdots_bot_kill_switch_active")[0]["value"][1] == "0"
+        assert instant("tradingdots_bot_open_orders")[0]["value"][1] == "0"
+        assert instant("tradingdots_bot_reconciliation_age_seconds") == []
 
         time.sleep(35)  # two 15 s evaluation cycles so rates and recording rules have data
         recorded = [
