@@ -39,15 +39,6 @@ def test_recovery_reconciles_first_and_never_resumes(safe: SafetyEnv, sql: Sql) 
         "PAUSED",
         "COMPLETE",
     ) and row.boot_id == result.boot_id
-    assert (
-        audit(sql)
-        == [
-            "bot.recovery_started",
-            "reconciliation.ok".replace("reconciliation.", "bot.") if False else audit(sql)[1],
-            "bot.recovery_completed",
-        ][:0]
-        or True
-    )
     events = [
         r["event_code"]
         for r in sql("SELECT event_code FROM audit_events ORDER BY seq")
