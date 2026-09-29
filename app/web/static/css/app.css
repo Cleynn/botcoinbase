@@ -74,3 +74,4 @@ code { font-family: ui-monospace, monospace; background: var(--panel); padding: 
 .actions { list-style: none; padding: 0; }
 .actions li { margin: .5rem 0; }
 a.button { display: inline-block; min-height: 2.75rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: .5rem; }
+pre.report { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; padding: .75rem 1rem; }

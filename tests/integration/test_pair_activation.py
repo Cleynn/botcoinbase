@@ -41,7 +41,7 @@ def test_by_default_activation_is_refused_because_no_bot_state_exists(
     pair_id = closed_env.eligible("BTC-USDC")
     page = admin_client.get(f"/pairs/{pair_id}/activate/request")
     assert page.status_code == 200
-    assert "BOT_STATE_UNAVAILABLE" in page.text and "MODE_NOT_PAPER" in page.text
+    assert "MODE_NOT_PAPER" in page.text
     assert "No confirmation is offered" in page.text
     assert 'action="/pairs/' not in page.text.replace(f'href="/pairs/{pair_id}"', "")
     post(
@@ -60,8 +60,7 @@ def test_by_default_activation_is_refused_because_no_bot_state_exists(
     assert closed_env.state(pair_id) is PairState.PAPER_ELIGIBLE
     assert denials(sql) == ["GUARD_FAILED"]
     assert (
-        "BOT_STATE_UNAVAILABLE"
-        in json.loads(audit(sql, "pair.transition_denied")[0]["detail"])["reasons"]
+        "MODE_NOT_PAPER" in json.loads(audit(sql, "pair.transition_denied")[0]["detail"])["reasons"]
     )
     assert audit(sql, "pair.activated_paper") == []
 

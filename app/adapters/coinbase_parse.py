@@ -296,6 +296,7 @@ class Candle:
 class CandleSet:
     candles: tuple[Candle, ...]  # ascending by start, duplicates kept (quality check counts them)
     malformed: int  # entries that could not be parsed
+    unordered: bool = False  # starts were neither ascending nor descending (duplicates aside)
 
 
 def parse_candles(body: bytes) -> CandleSet:
@@ -318,8 +319,12 @@ def parse_candles(body: bytes) -> CandleSet:
         parsed.append(Candle(start, low, high, open_, close, volume))  # type: ignore[arg-type]
     if isinstance(data["candles"], list) and len(data["candles"]) > _MAX_CANDLES:
         malformed += len(data["candles"]) - _MAX_CANDLES
+    starts = [c.start for c in parsed]
+    ascending = all(a <= b for a, b in zip(starts, starts[1:], strict=False))
+    descending = all(a >= b for a, b in zip(starts, starts[1:], strict=False))
+    unordered = len(starts) > 1 and not (ascending or descending)
     parsed.sort(key=lambda c: c.start)
-    return CandleSet(tuple(parsed), malformed)
+    return CandleSet(tuple(parsed), malformed, unordered)
 
 
 # ---------------------------------------------------------------------------- order book

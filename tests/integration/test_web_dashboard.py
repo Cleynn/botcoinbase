@@ -79,7 +79,8 @@ def test_navigation_differs_by_role(admin_client: TestClient, viewer_client: Tes
     for nav in (admin_nav, viewer_nav):
         assert 'href="/security"' in nav
         assert 'href="/pairs"' in nav  # Phase 4: a real page for every signed-in user
-        for later in ("Bot", "Reports", "LLM Review"):
+        assert 'href="/reports"' in nav  # Phase 5
+        for later in ("Bot", "LLM Review"):
             assert re.search(rf'aria-disabled="true">{later} ', nav)
         assert 'href="/bot"' not in nav
 

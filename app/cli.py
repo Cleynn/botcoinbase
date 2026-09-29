@@ -1,7 +1,7 @@
-"""Command line: `validate-config`, `serve` and `pairs`.
+"""Command line: `validate-config`, `serve`, `pairs`, `market`, `backtest` and `paper`.
 
-`pairs` (discovery, seeding, validation) reads public Coinbase market data only. No trading, order
-or bot-control command exists.
+`pairs` and `market` read public Coinbase data only; `backtest` reads frozen snapshots; `paper`
+uses the local paper database. No live trading, exchange order or bot-control command exists.
 """
 
 from __future__ import annotations
@@ -20,6 +20,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from app.pairs.cli import main as pairs_main
 
         return pairs_main(args_in[1:])
+    if args_in and args_in[0] in ("market", "backtest", "paper"):
+        from app.batch_cli import main as batch_main
+
+        return batch_main(args_in)
 
     parser = argparse.ArgumentParser(prog="tradingdots")
     parser.add_argument("command", choices=["validate-config", "serve", "pairs"])

@@ -358,7 +358,7 @@ def test_the_detail_page_shows_lifecycle_validation_metadata_history_reasons_tra
     )
     assert "pair.proposed" in body and "pair.paper_eligible" in body and "host CLI" in body
     assert (
-        "Currently refused" in body and "BOT_STATE_UNAVAILABLE" in body
+        "Currently refused" in body and "MODE_NOT_PAPER" in body
     )  # activation is shown as refused
 
 
@@ -753,20 +753,21 @@ def test_a_disabled_pair_can_be_archived(admin_client: TestClient, env: Any, sql
     assert env.state(disabled) is PairState.ARCHIVED
 
 
-def test_a_previously_active_pair_cannot_be_archived_until_reconciliation_can_show_it_clean(
+def test_a_previously_active_pair_cannot_be_archived_while_it_holds_paper_state(
     admin_client: TestClient, env: Any, sql: Sql
 ) -> None:
-    pair_id = env.make(
-        "BTC-USDC", PairState.PAUSED
-    )  # ever active; reconciliation does not exist yet
+    pair_id = env.make("BTC-USDC", PairState.PAUSED)  # ever active
+    sql(
+        "INSERT INTO paper_positions (pair_id, base_qty, cost_basis, updated_at) "
+        "VALUES (%s, 1, 10, now())",
+        (pair_id,),
+    )  # paper inventory left over: not clean
     version = env.get(pair_id).version
     reauth(admin_client, pair_id, "archive", version)
     response = confirm(admin_client, pair_id, "archive", version, "ARCHIVE PAIR BTC-USDC")
     assert response.status_code == 409 and env.state(pair_id) is PairState.PAUSED
     assert denials(sql) == ["GUARD_FAILED"]
-    assert (
-        "RECONCILIATION_UNAVAILABLE" in admin_client.get(f"/pairs/{pair_id}/archive/request").text
-    )
+    assert "PAPER_INVENTORY" in admin_client.get(f"/pairs/{pair_id}/archive/request").text
 
 
 def test_there_is_no_way_to_hard_delete_a_pair(

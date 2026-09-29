@@ -19,6 +19,7 @@ VIEWER_ALLOWED = {
     Permission.REVOKE_OWN_SESSIONS,
     Permission.LOGOUT,
     Permission.VIEW_PAIRS,
+    Permission.VIEW_REPORTS,
 }
 ADMIN_ONLY = {
     Permission.VIEW_USER_DIRECTORY,

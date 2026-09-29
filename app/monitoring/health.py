@@ -13,13 +13,30 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from app.config import AuthSettings, MonitoringSettings
 from app.domain.models import ChainStatus, Clock
 from app.monitoring.alerts import AttentionItem, evaluate_attention
 from app.storage.database import Storage, head_version
+from app.storage.repositories import Repos
 
 logger = logging.getLogger("app")
+
+
+@dataclass(frozen=True)
+class MarketFacts:
+    """Read-only counts from the market, backtest, report and paper tables."""
+
+    last_ingest_at: datetime | None
+    event_counts: dict[str, int]
+    backtests: int
+    last_backtest_at: datetime | None
+    reports: int
+    paper_state: str
+    paper_orders: dict[str, int]
+    paper_deployed: Decimal
+    paper_free_cash: Decimal
 
 
 @dataclass(frozen=True)
@@ -38,6 +55,25 @@ class MonitoringSnapshot:
     chain_verified_at: datetime | None = None
     pair_state_counts: dict[str, int] | None = None
     pair_oldest_verified_at: datetime | None = None
+    market: MarketFacts | None = None
+
+
+def _market_facts(repos: Repos) -> MarketFacts:
+    backtests, last_backtest = repos.results.backtest_stats()
+    session = repos.paper.session()
+    cash, reserved = repos.paper.cash(), repos.paper.reserved()
+    _qty, cost = repos.paper.total_position()
+    return MarketFacts(
+        last_ingest_at=repos.market.last_success_at(),
+        event_counts=repos.market.event_counts(),
+        backtests=backtests,
+        last_backtest_at=last_backtest,
+        reports=repos.results.report_count(),
+        paper_state=session.state,
+        paper_orders=repos.paper.counts(),
+        paper_deployed=reserved + cost,
+        paper_free_cash=cash - reserved,
+    )
 
 
 @dataclass(frozen=True)
@@ -110,6 +146,7 @@ class MonitoringService:
                     audit_event_counts=repos.monitoring.audit_counts(),
                     pair_state_counts=repos.pairs.state_counts(),
                     pair_oldest_verified_at=repos.pairs.oldest_metadata_age_basis(),
+                    market=_market_facts(repos),
                 )
                 self._refresh_chain(repos, now)
         except Exception:  # noqa: BLE001  monitoring must never raise into the application

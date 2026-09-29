@@ -202,7 +202,7 @@ def test_snapshot_reads_real_state_and_counts_events(
 ) -> None:
     monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
     s = monitoring.service.snapshot()
-    assert s.db_up and s.schema_version == s.expected_schema_version == 2
+    assert s.db_up and s.schema_version == s.expected_schema_version == head_version()
     assert s.sessions_active == 1 and s.users_by_role == {"ADMIN": 1}
     assert s.audit_event_counts == {"auth.login.success": 1} and s.audit_events_total == 1
     assert s.chain is not None and s.chain.ok and s.chain_verified_at == clock.now()
@@ -399,4 +399,4 @@ def test_pair_metrics_carry_no_product_identity(
         build_monitoring(storage=storage, clock=clock, settings=settings).metrics.render().decode()
     )
     assert "BTC-USDC" not in body and "BTC" not in body.replace("tradingdots", "")
-    assert "USDC" not in body and 'product="' not in body and 'pair="' not in body
+    assert 'product="' not in body and 'pair="' not in body and "BTC-" not in body

@@ -13,6 +13,7 @@ from app.config import Settings
 from app.domain.enums import AuditEventType, Role
 from app.domain.models import Clock
 from app.domain.pairs import PairState
+from app.market.candles import EVENT_CODES
 from app.monitoring.health import MonitoringService, MonitoringSnapshot
 from app.monitoring.metrics import VERSION, Metrics, MetricsServer
 from app.storage.database import Storage
@@ -120,6 +121,55 @@ class AppCollector(Collector):
                 "tradingdots_pair_metadata_age_seconds",
                 "Age of the oldest verified product metadata among non-archived pairs.",
                 (snap.taken_at - oldest).total_seconds() if oldest is not None else None,
+            )
+        if snap.market is not None:
+            m = snap.market
+            yield _gauge(
+                "tradingdots_ingest_last_success_timestamp_seconds",
+                "When a candle import last completed without error.",
+                m.last_ingest_at.timestamp() if m.last_ingest_at else None,
+            )
+            quality = CounterMetricFamily(
+                "tradingdots_data_quality_events",
+                "Data-quality events recorded by candle imports, by event code.",
+                labels=["code"],
+            )
+            for code in EVENT_CODES:  # fixed series set, zeros included
+                quality.add_metric([code], m.event_counts.get(code, 0))
+            yield quality
+            runs = CounterMetricFamily("tradingdots_backtest_runs", "Stored backtest runs.")
+            runs.add_metric([], m.backtests)
+            yield runs
+            yield _gauge(
+                "tradingdots_backtest_last_run_timestamp_seconds",
+                "When a backtest was last stored.",
+                m.last_backtest_at.timestamp() if m.last_backtest_at else None,
+            )
+            reports = CounterMetricFamily("tradingdots_reports", "Stored reports.")
+            reports.add_metric([], m.reports)
+            yield reports
+            yield _gauge(
+                "tradingdots_paper_running",
+                "1 while the local paper session is RUNNING, else 0 (PAPER only).",
+                1 if m.paper_state == "RUNNING" else 0,
+            )
+            orders = GaugeMetricFamily(
+                "tradingdots_paper_orders",
+                "Local paper orders by state (PAPER only, never exchange orders).",
+                labels=["state"],
+            )
+            for order_state in ("OPEN", "FILLED", "CANCELLED", "REJECTED"):
+                orders.add_metric([order_state], m.paper_orders.get(order_state, 0))
+            yield orders
+            yield _gauge(
+                "tradingdots_paper_deployed_quote",
+                "Paper deployment: open buy reserve plus inventory cost, in USDC (PAPER only).",
+                float(m.paper_deployed),
+            )
+            yield _gauge(
+                "tradingdots_paper_free_cash_quote",
+                "Paper cash not reserved by open buys, in USDC (PAPER only).",
+                float(m.paper_free_cash),
             )
         if snap.chain is not None:
             yield _gauge(

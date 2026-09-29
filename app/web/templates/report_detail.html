@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ view.title }} <span class="badge">{{ view.label }}</span></h1>
+<p><a href="/reports">All reports</a> · <a href="/reports/{{ view.id }}/json">Download JSON</a> · <a href="/reports/{{ view.id }}/md">Download Markdown</a></p>
+<p class="notice">{{ view.label }} results only. MODE and LIVE TRADING status are shown in the banner above. Created {{ view.created }}. SHA-256 of the JSON body: <code>{{ view.sha256 }}</code>.</p>
+<pre class="report" tabindex="0">{{ view.markdown }}</pre>
+{% endblock %}

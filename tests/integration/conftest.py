@@ -1,0 +1,69 @@
+"""Fixtures for the Phase 5 market, backtest and paper integration tests (synthetic data only)."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from app.config import Settings
+from app.market.ingest import Importer
+from app.storage.database import Storage
+from tests.conftest import FakeClock
+from tests.market_env import Source, ingest_settings, install
+
+
+@dataclass
+class Market:
+    settings: Settings
+    storage: Storage  # td_ctl
+    clock: FakeClock
+    coinbase: Any
+    source: Source
+    data_dir: Path
+    sleeps: list[float] = field(default_factory=list)
+
+    def importer(self) -> Importer:
+        return Importer(
+            storage=self.storage,
+            clock=self.clock,
+            settings=self.settings,
+            client=self.coinbase.client(),
+            sleep=self.sleeps.append,
+        )
+
+    def imported(self, product: str = "BTC-USDC") -> Any:
+        """Discover the pair (public metadata) and commit a full import."""
+        from app.pairs.runner import PairRunner
+
+        PairRunner(
+            storage=self.storage,
+            clock=self.clock,
+            settings=self.settings,
+            client=self.coinbase.client(),
+        ).discover()
+        result = self.importer().run(product, commit=True)
+        assert result.status == "COMPLETE", result
+        return result
+
+
+@pytest.fixture
+def mkt(
+    settings: Settings,
+    ctl_storage: Storage,
+    clock: FakeClock,
+    coinbase: Any,
+    tmp_path: Path,
+) -> Market:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    return Market(
+        settings=ingest_settings(settings, str(data_dir)),
+        storage=ctl_storage,
+        clock=clock,
+        coinbase=coinbase,
+        source=install(coinbase),
+        data_dir=data_dir,
+    )

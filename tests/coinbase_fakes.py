@@ -155,6 +155,8 @@ class FakeCoinbase:
         self.intraday_gap = 0  # remove this many recent five-minute candles
         self.time_offset = 0
         self.server_epoch_override: int | None = None
+        # optional: (product, start, end) -> raw candle dicts for FIVE_MINUTE requests
+        self.range_source: Callable[[str, int, int], list[dict[str, str]]] | None = None
 
     # ------------------------------------------------------------------ plumbing
     def epoch(self) -> int:
@@ -209,6 +211,10 @@ class FakeCoinbase:
         if path.startswith("/market/products/") and path.endswith("/candles"):
             pid = path.split("/")[3]
             price = self.mids.get(pid, "100")
+            if request.url.params["granularity"] == "FIVE_MINUTE" and self.range_source is not None:
+                start = int(request.url.params["start"])
+                end = int(request.url.params["end"])
+                return self.json({"candles": list(reversed(self.range_source(pid, start, end)))})
             if request.url.params["granularity"] == "ONE_DAY":
                 candles = daily_candles(epoch, price=price)[self.drop_daily :]
             else:

@@ -148,6 +148,16 @@ class ProductRepository:
         row = self._conn.execute("SELECT count(*) AS n FROM products").fetchone()
         return int(row["n"]) if row else 0
 
+    def metadata_snapshot(self, snapshot_id: UUID) -> ProductMetadata | None:
+        """The frozen rules of one metadata snapshot (what a dataset snapshot points at)."""
+        row = self._conn.execute(
+            "SELECT p.product_id, p.base_currency, p.quote_currency, p.product_type, p.venue, "
+            f"{SNAPSHOT_COLUMNS} FROM product_metadata_snapshots s "
+            "JOIN products p ON p.id = s.product_uuid WHERE s.id = %s",
+            (snapshot_id,),
+        ).fetchone()
+        return _metadata(row) if row else None
+
     def record_seen(
         self,
         meta: ProductMetadata,

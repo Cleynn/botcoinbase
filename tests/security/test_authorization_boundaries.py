@@ -30,6 +30,10 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("POST", "/security/sessions/revoke-others"): "revoke_own_sessions",
     ("POST", "/security/users/revoke-sessions"): "revoke_user_sessions",
     ("GET", "/audit"): "view_audit",
+    ("GET", "/reports"): "view_reports",
+    ("GET", "/reports/{report_id}"): "view_reports",
+    ("GET", "/reports/{report_id}/json"): "view_reports",
+    ("GET", "/reports/{report_id}/md"): "view_reports",
     ("GET", "/pairs"): "view_pairs",
     ("GET", "/pairs/products"): "view_pairs",
     ("GET", "/pairs/{pair_id}"): "view_pairs",
@@ -75,7 +79,7 @@ def test_anonymous_visitors_cannot_use_any_protected_route(app: Any, client: Tes
     for (method, template), level in EXPECTED.items():
         if level == "public":
             continue
-        path = template.format(pair_id=uuid4(), action="archive")
+        path = template.format(pair_id=uuid4(), report_id=uuid4(), action="archive")
         if method == "GET":
             response = client.get(path, follow_redirects=False)
             assert response.status_code == 303 and response.headers["location"] == "/login", path
@@ -302,7 +306,7 @@ def test_no_page_exposes_a_bot_pair_exchange_or_config_control(admin_client: Tes
         ):
             assert word not in body
     # Phase 4 added /pairs; the other control surfaces still do not exist.
-    for path in ("/bot", "/orders", "/exchange", "/config", "/review", "/reports"):
+    for path in ("/bot", "/orders", "/exchange", "/config", "/review"):
         assert admin_client.get(path).status_code == 404
         assert admin_client.post(path, data={"csrf_token": "x"}).status_code in (403, 404, 405)
 

@@ -47,9 +47,17 @@ PUBLIC_PATHS: Final = (PATH_TIME, PATH_PRODUCTS, PATH_PRODUCT, PATH_CANDLES, PAT
 class PublicClientError(Exception):
     """A request failed. `code` is a fixed vocabulary; the message never contains response data."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, status: int | None = None) -> None:
         super().__init__(code)
         self.code = code
+        self.status = status  # HTTP status when there was one (never response content)
+
+    @property
+    def retryable(self) -> bool:
+        """Safe to repeat: every call is a read-only GET; only transient failures qualify."""
+        return self.code in {"TIMEOUT", "NETWORK", "RATE_LIMITED"} or (
+            self.code == "HTTP_ERROR" and self.status is not None and self.status >= 500
+        )
 
 
 class RateLimiter:
@@ -149,9 +157,9 @@ class CoinbasePublicClient:
                 if 300 <= response.status_code < 400:
                     raise PublicClientError("REDIRECT_REFUSED")
                 if response.status_code == 429:
-                    raise PublicClientError("RATE_LIMITED")
+                    raise PublicClientError("RATE_LIMITED", 429)
                 if response.status_code != 200:
-                    raise PublicClientError("HTTP_ERROR")
+                    raise PublicClientError("HTTP_ERROR", response.status_code)
                 if (
                     not response.headers.get("content-type", "")
                     .lower()

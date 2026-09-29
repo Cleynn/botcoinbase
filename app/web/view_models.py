@@ -17,7 +17,7 @@ from app.domain.models import AuditRecord, AuthContext, ChainStatus, SessionSumm
 from app.domain.permissions import Permission, has_permission
 
 WEB_DIR = Path(__file__).resolve().parent
-DISABLED_NAV = ("Bot", "Reports", "LLM Review")
+DISABLED_NAV = ("Bot", "LLM Review")
 
 # Phase 1 fields that have no data source yet. Every value is "Unknown" or "Not available".
 UNAVAILABLE_TILES: tuple[tuple[str, str], ...] = (

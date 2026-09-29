@@ -69,6 +69,16 @@ EXPECTED = {
     "tradingdots_pair_candidates_total",
     "tradingdots_pair_state_total",
     "tradingdots_pair_metadata_age_seconds",
+    # Phase 5: real database facts about imports, backtests, reports and the LOCAL paper venue
+    "tradingdots_ingest_last_success_timestamp_seconds",
+    "tradingdots_data_quality_events_total",
+    "tradingdots_backtest_runs_total",
+    "tradingdots_backtest_last_run_timestamp_seconds",
+    "tradingdots_reports_total",
+    "tradingdots_paper_running",
+    "tradingdots_paper_orders",
+    "tradingdots_paper_deployed_quote",
+    "tradingdots_paper_free_cash_quote",
 }
 # Contract names that Phase 4 now publishes because a real source exists.
 PUBLISHED_CONTRACT = {"tradingdots_pair_candidates_total", "tradingdots_pair_state_total"}

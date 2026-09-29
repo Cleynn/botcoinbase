@@ -139,7 +139,11 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
         if set(_names(proxy.get("networks"))) != {"egress_int", "egress_ext"}:
             problems.append("egress-proxy must join exactly egress_int and egress_ext")
     for name, svc in services.items():
-        if "egress_int" in _names(svc.get("networks")) and name not in {EGRESS_PROXY, "pairs"}:
+        if "egress_int" in _names(svc.get("networks")) and name not in {
+            EGRESS_PROXY,
+            "pairs",
+            "batch",
+        }:
             problems.append(f"service '{name}' must not join egress_int")
     return problems
 

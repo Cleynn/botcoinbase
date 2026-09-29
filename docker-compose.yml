@@ -222,6 +222,44 @@ services:
     mem_limit: 256m
     pids_limit: 100
 
+  # ---- Market data, backtests and PAPER trading (Phase 5). Profile "discovery" only -------------
+  # Never started by `make up`. Same egress model as `pairs`: public GETs through the allowlist
+  # proxy, nothing else. Frozen datasets live in the `datasets` volume at /data (snapshot files are
+  # written read-only). Nothing here can place an order on any exchange: the paper venue is the
+  # database, and there is no private API client in the image.
+  #   docker compose --profile discovery run --rm batch market import --product BTC-USDC
+  #   docker compose --profile discovery run --rm batch market import --product BTC-USDC --commit
+  #   docker compose --profile discovery run --rm batch market snapshot --product BTC-USDC
+  #   docker compose --profile discovery run --rm batch backtest run --snapshot <id>
+  #   docker compose --profile discovery run --rm batch paper status
+  batch:
+    <<: *hardening
+    restart: "no"
+    profiles: [discovery]
+    build: *app-build
+    image: tradingdots-app:phase4
+    user: "10001:10001"
+    entrypoint: ["python", "-m", "app.cli"]
+    command: ["paper", "status"]
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+      TD_DB_USER: td_ctl
+      TD_DB_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
+      TD_EGRESS_PROXY: http://egress-proxy:3128
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    volumes:
+      - datasets:/data
+    networks: [backend, egress_int]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      egress-proxy: {condition: service_healthy}
+    mem_limit: 512m
+    pids_limit: 100
+
   # ---- Monitoring (Phase 3): observational and read-only, nothing here is published ----------
   prometheus:
     <<: *hardening
@@ -386,3 +424,4 @@ volumes:
   redis_data: {}
   prometheus_data: {}
   grafana_data: {}
+  datasets: {}                       # frozen Parquet snapshots (batch service only)

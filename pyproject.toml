@@ -14,6 +14,7 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "python-multipart>=0.0.9",
     "prometheus-client>=0.20,<1",
+    "pyarrow>=25.0.1",
 ]
 
 [dependency-groups]
@@ -52,6 +53,11 @@ select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
 # Only fixed column-list constants are interpolated into SQL; all values are bound parameters.
 "app/storage/repositories.py" = ["S608"]
 "app/storage/pair_repositories.py" = ["S608"]
+"app/storage/market_repositories.py" = ["S608", "E501"]
+"app/storage/paper_repositories.py" = ["S608", "E501"]
+# Report text and operator output lines are long sentences.
+"app/reports/builder.py" = ["E501"]
+"app/batch_cli.py" = ["E501", "T201"]
 # Verdict names PASS/FAIL are not credentials; check messages are long human-readable sentences.
 "app/pairs/validation.py" = ["S105", "E501"]
 # SQL literals in the database-level tests are easier to read on one line.
@@ -70,3 +76,13 @@ exclude = ["tests/pending/"]
 plugins = ["pydantic.mypy"]
 explicit_package_bases = true
 mypy_path = "."
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+module = "app.market.snapshots"
+# pyarrow ships partial type information; everything else in this module stays strict.
+disable_error_code = ["attr-defined", "no-untyped-call", "no-any-return", "misc"]
