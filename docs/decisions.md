@@ -197,6 +197,13 @@ Implemented: disabled-by-default import; ADMIN-only chain (CSRF + fresh single-u
 - **Defects found and fixed while testing:** policy gaps for passive/inflected verbs, standalone "auto apply", `api_key`-style nouns and short proximity windows; regex tables needed raw strings.
 - review: SELF. **No independent security review has been performed.**
 
+### DEC-020: Phase 7 verification record
+- Full suite 2374 passed, 0 skipped (real PostgreSQL 16, real promtool/Prometheus/node_exporter); ruff, format and mypy clean. Note: the suite was run before the final one-line typing fix in `tests/unit/test_proposal_policy.py`; that file was re-run alone (212 passed).
+- Real processes + Chromium (pgserver DB, real CLI subprocesses, `app.cli serve`, real multipart upload, SYNTHETIC data): 28/28 checks: default DISABLED and labelled; ZIP-named-.json and .html refused with nothing stored; valid upload stored as a generated 0440 name outside the web root, no static route; host validation; hostile markup rejected and shown only escaped; review; manual change request with a phrase naming the proposal id; before/after row counts of pair, order, paper, config and user tables unchanged; policy violation REJECTED and not reviewable; VIEWER 403; one-click disable; no horizontal scroll at 375 px; no CSP violations; no inline script; every action audited; no proposal text or secrets in the audit log.
+- Migration 0005 rollback to schema 4 and re-apply verified on a real PostgreSQL.
+- Not verified: Docker start of `app`/`batch` with the shared `proposals` volume (no Docker daemon), `docker compose config`, any real Coinbase data (AS-C1). Policy is heuristic; no independent review.
+- review: SELF
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;
