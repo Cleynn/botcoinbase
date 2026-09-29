@@ -55,3 +55,6 @@ called, and no proposal is imported. Build/verify/cleanup run on the host (`make
 
 ## Imported proposals (Phase 7)
 An ADMIN can enable (disabled by default) and import a plain-text/JSON proposal written by an AI assistant. It is stored opaquely, validated on the host against a strict schema and policy, shown escaped and labelled **UNTRUSTED ADVISORY INPUT**, and can lead to a *manual* change request. Nothing is ever applied and no LLM is called. See `docs/proposals.md`; fictional example: `docs/examples/proposal-FICTIONAL.json`.
+
+## Safety machinery (Phase 8)
+Risk engine, circuit breaker, kill switch, staleness and anomaly checks, REST reconciliation (authoritative), startup recovery, a GET-only private read adapter with no credentials, and supplemental WebSocket hints. Orders follow intent -> risk decision -> authorization -> submit mark -> gateway -> reconciliation, and nothing can place one in this build (no gateway, no reader, no signer). The ADMIN **Bot** page can pause, resume (only after a current reconciliation), cancel the bot's known orders and activate the kill switch, each with password and an exact phrase. **LIVE TRADING BLOCKED.** See `docs/safety-machinery.md`.

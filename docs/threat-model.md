@@ -87,3 +87,15 @@ Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange fail
 | Forged or replayed approval | ADMIN + CSRF + Origin + single-use reauth + phrase naming the proposal id | Compromised ADMIN session that knows the password |
 | Upload flooding | Body caps, per-hour/day limits, 200 MB store cap, early refusal without a session | None known |
 | Tampered stored file | Web role cannot validate; state and hashes recorded; content immutable in the row | Someone with DB and volume write access |
+
+## Phase 8 additions (safety machinery)
+| Threat | Control | Residual |
+|---|---|---|
+| Duplicate or runaway orders after a timeout or crash | Deterministic client ids, submit mark before I/O, UNKNOWN + reconcile before retry, one live attempt per intent, absence proof, rate and reject-storm breaker | Absence proof is unverified against a real exchange |
+| Trading on stale or wrong inputs | Freshness limits, precision/minimum checks, spread and price sanity, attested fees, reserve/cap, loss and drawdown limits; unknown = block | Heuristic limits |
+| A hint or response that lies | REST is authoritative, hints never change state, strict required fields, balances compared exactly | A consistently wrong exchange cannot be detected |
+| Compromised web process placing orders | No order-path grant for `td_app`, no gateway or exchange code in the web tier, no route | It can still pause, kill, resume within the database guards (RR-1) |
+| Kill switch used to liquidate | No market order can be expressed; cancel only orders the bot created and knows; foreign orders untouched | None known |
+| Resume without a real check | Database requires a fresh successful reconciliation, recovery COMPLETE, cooled breaker, no UNKNOWN attempt | Clock trust (application clock in guards) |
+| Credential leakage | No credential, signer or key loader exists; adapter refuses with NO_CREDENTIALS | Future signer must be reviewed separately |
+| Live trading enabled by accident | Live gate cannot return anything but BLOCKED; venues and modes exclude LIVE; nothing in config, CLI or UI opens it | None known |

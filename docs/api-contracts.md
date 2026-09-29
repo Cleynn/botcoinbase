@@ -107,3 +107,13 @@ All routes need permission `manage_proposals` (ADMIN only; VIEWER 403, audited a
 | GET/POST | `/review/proposals/{id}/change-request/request`, `/reauth`, `/confirm` | phrase `CREATE MANUAL CHANGE REQUEST FOR PROPOSAL <id>`, `change_type`, `impact_assessment`, `ceilings_unaffected` |
 | GET/POST | `/review/proposals/{id}/attest/{kind}` (implemented, backtested or paper-validated)`/request`, `/reauth`, `/confirm` | reauth, no phrase; `reference` or `report_ids` |
 There is no download, raw-view, apply, approve-and-run or DELETE route. Audit events: `proposal.import_enabled|import_disabled|imported|validating|validated|rejected|reviewed|change_request_created|implemented|backtested|paper_validated|closed|cleanup|denied`.
+
+## Bot control (Phase 8)
+`GET /bot` needs `view_bot` (VIEWER and ADMIN; read-only). Every other route needs `manage_bot` (ADMIN only; VIEWER 403, audited). Every POST needs CSRF and a same-origin request. Nothing writes on GET. `{slug}` is `pause`, `resume`, `cancel-known` or `kill`.
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/bot` | state, live gate (always BLOCKED), reconciliation, findings, attempts by state, history, commands; controls only for ADMIN |
+| GET | `/bot/{slug}/request` | confirmation page naming the exact phrase; for resume it lists what blocks it |
+| POST | `/bot/{slug}/reauth` | `csrf_token, password`; 303 back to the request page; 400/429 |
+| POST | `/bot/{slug}/confirm` | `csrf_token, confirmation` (`PAUSE BOT`, `RESUME BOT AFTER RECONCILIATION`, `CANCEL KNOWN BOT ORDERS`, `ACTIVATE KILL SWITCH`); 303 to `/bot?msg=...`; 400 phrase/reauth; 409 refused with reasons |
+There is no route that creates, submits, changes or sells an order, releases the kill switch, or opens the live gate. Audit events: `bot.control_requested|control_denied|paused|resumed|kill_activated|kill_released|breaker_opened|recovery_started|recovery_completed|cancel_requested|cancel_completed|cancel_failed`, `reconciliation.ok|mismatch|failed`, `order.intent_created|risk_allowed|risk_blocked|attempt_authorized|submitting|submitted|rejected|unknown|resolved|absent`.

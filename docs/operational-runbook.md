@@ -106,3 +106,11 @@ If a package turns CORRUPT, do not use it; request a new one and investigate the
 5. Make the actual change as a normal reviewed change; then attest IMPLEMENTED, BACKTESTED (report ids) and PAPER_VALIDATED (paper reports), and close.
 6. `make proposal-cleanup` (schedule it): removes bytes of old CLOSED/REJECTED proposals and orphan files.
 7. To stop: Disable import (one click). Existing proposals stay readable.
+
+## Phase 8: safety machinery (operator steps)
+1. `make safety-status` shows the control state, the last reconciliation and what blocks RESUME. Live trading is BLOCKED and this cannot change.
+2. After every host start: `make safety-recover`. Without an exchange reader (every deployment of this build) it reports `NO_EXCHANGE_READER` and the bot stays PAUSED.
+3. `make safety-reconcile` (schedule it) records a reconciliation; `make safety-monitor` evaluates breaker signals; `make safety-commands` runs a queued cancel of known bot orders.
+4. ADMIN dashboard **Bot**: Pause, Resume (only after reconciliation), Cancel known orders, Kill switch; each needs your password and an exact phrase.
+5. After a kill switch: run `safety-commands` (the cancel), then `safety kill-release --confirm "RELEASE KILL SWITCH"` on the host, `safety-recover`, then Resume in the dashboard. A kill or breaker never sells anything.
+6. An UNKNOWN attempt blocks orders and resume until reconciliation adopts it or proves it absent. Foreign orders are flagged, never touched: deal with them on the exchange, then reconcile again.

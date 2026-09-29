@@ -14,3 +14,6 @@ Feature flag: DISABLED (default) <-> ENABLED, ADMIN full chain both ways. Packag
 
 ## Proposal lifecycle (Phase 7)
 `IMPORTED -> VALIDATING -> VALIDATED | REJECTED -> REVIEWED -> CHANGE_REQUEST_CREATED -> IMPLEMENTED -> BACKTESTED -> PAPER_VALIDATED -> CLOSED`; also `REJECTED | REVIEWED | CHANGE_REQUEST_CREATED -> CLOSED`. HOST (`td_ctl`) performs IMPORTED -> VALIDATING -> VALIDATED | REJECTED only; WEB (`td_app`, ADMIN) performs the rest. Database triggers enforce actor class, immutable content fields, write-once validation/review/close fields, required history and record rows (`change_requests`, `proposal_attestations`), rate and storage limits and "insert only while import is enabled". No DELETE, no TRUNCATE. See `docs/proposals.md`.
+
+## Bot control and order attempts (Phase 8)
+Bot: PAUSED <-> RUNNING; kill switch INACTIVE -> ACTIVE (web or host) -> INACTIVE (host only); breaker CLOSED -> OPEN (host) -> CLOSED (only inside the ADMIN resume, after cooldown and a post-trip reconciliation); recovery INCOMPLETE <-> COMPLETE (host). RUNNING needs kill INACTIVE, breaker CLOSED, recovery COMPLETE (CHECK). Attempts: `AUTHORIZED -> SUBMITTING -> WORKING | REJECTED | UNKNOWN`, `UNKNOWN -> ... | ABSENT` after the absence proof. Full matrices and the fault matrix: `docs/safety-machinery.md`.

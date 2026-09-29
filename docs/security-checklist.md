@@ -92,3 +92,16 @@
 - [x] Lifecycle enforced by database triggers per actor class; approval creates only a manual change request; before/after table fingerprints show nothing else changes.
 - [x] All proposal text auto-escaped; hostile markup and template syntax tested; no inline script or event handlers.
 - [ ] Shared `proposals` volume between `app` and `batch` in real containers: NOT verified (no Docker daemon).
+
+## Phase 8 (safety machinery)
+- [x] Nothing places an order in tests, demos, commands or the default deployment: no gateway, no reader, no signer, no credential (`test_safety_boundaries`).
+- [x] Private reads only through the GET-only adapter behind `NullSigner`; the web tier imports no exchange or host-only safety code.
+- [x] Intent persisted (immutable, capped) before decision; one ALLOW per attempt; unique deterministic client ids; the submit mark committed before I/O.
+- [x] Ambiguity leaves UNKNOWN and reconciles first; a retry is a new attempt only after an absence proof or a definite rejection; no blind resubmit.
+- [x] REST reconciliation is authoritative; feed hints are cross-checked and never applied.
+- [x] Startup recovery reconciles before any action and never resumes; RESUME needs a current successful reconciliation (database enforced).
+- [x] Every block reason of requirement 8 has a test on the real path or the pure engine; unknown facts block.
+- [x] Kill switch and breaker never sell; there is no market order in the schema, the request type or the fake.
+- [x] The four dashboard controls follow authz, CSRF, fresh reauth, typed phrase, audit, command, outcome audit; the dashboard cannot create an order (no grant, no route).
+- [x] Live gate returns only BLOCKED; LIVE is unrepresentable in modes, venues and CHECKs.
+- [ ] Any real Coinbase behaviour, client-id scope, fill shapes, the absence proof against a real exchange, real containers: NOT verified.
