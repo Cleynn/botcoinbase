@@ -33,3 +33,30 @@ nav a, .nav-later { display: inline-block; padding: .5rem .25rem; min-height: 2.
 .tile h2 { margin: 0 0 .25rem; font-size: 1rem; }
 .site-footer { color: var(--muted); font-size: .875rem; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Phase 2: forms, tables, messages */
+.whoami { margin: 0 0 .25rem; color: var(--muted); }
+form.inline { display: inline; margin: 0; }
+form.stacked p { margin: .75rem 0; }
+label { display: block; font-weight: 600; margin-bottom: .25rem; }
+input[type="text"], input[type="password"], select {
+  width: 100%; max-width: 28rem; min-height: 2.75rem; padding: .5rem .75rem;
+  font: inherit; color: var(--fg); background: var(--bg); border: 2px solid var(--border); border-radius: .375rem;
+}
+button {
+  min-height: 2.75rem; padding: .5rem 1rem; font: inherit; font-weight: 600; cursor: pointer;
+  color: var(--bg); background: var(--accent); border: 2px solid var(--accent); border-radius: .375rem;
+}
+nav button { color: var(--accent); background: transparent; border-color: transparent; text-decoration: underline; }
+.msg { border: 2px solid var(--border); border-radius: .5rem; padding: .5rem 1rem; margin: 1rem 0; }
+.msg.error { border-color: #b91c1c; }
+.msg.error::before { content: "Error: "; font-weight: 700; }
+.msg.success { border-color: #15803d; }
+.msg.success::before { content: "Done: "; font-weight: 700; }
+.msg p { margin: .25rem 0; }
+.table-wrap { overflow-x: auto; margin: 1rem 0; }
+table { border-collapse: collapse; width: 100%; min-width: 32rem; }
+th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+code { font-family: ui-monospace, monospace; background: var(--panel); padding: 0 .25rem; }
+.filter { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin: 1rem 0; }
+.filter label { margin: 0; }

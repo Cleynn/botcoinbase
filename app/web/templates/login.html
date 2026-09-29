@@ -1,6 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Sign in</h1>
-<p class="notice">Authentication is not implemented in this build phase, so sign-in is unavailable. No account can be created from this page.</p>
-<p><a href="/">Back to Overview</a></p>
+{% if error %}<p class="msg error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/login" class="stacked">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <p>
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
+           spellcheck="false" maxlength="64" required>
+  </p>
+  <p>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password"
+           maxlength="1024" required>
+  </p>
+  <p><button type="submit">Sign in</button></p>
+</form>
+<p class="notice">Accounts are created by an administrator on the host. There is no self-registration and no password reset here.</p>
 {% endblock %}

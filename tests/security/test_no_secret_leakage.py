@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.app import create_app
 from app.config import ConfigError, load_settings
 from app.logging import RedactingFormatter, redact, setup_logging
 
@@ -71,22 +70,53 @@ def test_config_errors_and_repr_do_not_contain_secret_values(prod_env: dict[str,
 
 
 def test_health_and_error_pages_do_not_leak(
-    monkeypatch: pytest.MonkeyPatch, test_env: dict[str, str]
+    monkeypatch: pytest.MonkeyPatch, admin_client: TestClient, client: TestClient, secret_key: str
 ) -> None:
     canary = "canary-" + secrets.token_hex(8)
-    settings = load_settings({**test_env, "TD_SECRET_KEY": "k" * 40})
-    client = TestClient(create_app(settings), raise_server_exceptions=False)
-    assert "k" * 40 not in client.get("/healthz").text
+    assert secret_key not in client.get("/healthz").text
 
-    def boom() -> dict[str, object]:
+    def boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError(f"password={canary}")
 
-    monkeypatch.setattr("app.api.app._dashboard_context", boom)
-    response = client.get("/")
+    monkeypatch.setattr("app.api.dashboard.build_dashboard", boom)
+    response = admin_client.get("/")
     assert response.status_code == 500
-    assert canary not in response.text
-    assert "Traceback" not in response.text
+    assert (
+        canary not in response.text
+        and "Traceback" not in response.text
+        and "RuntimeError" not in response.text
+    )
     assert "Something went wrong." in response.text
+
+
+def test_database_outages_show_a_generic_503(
+    monkeypatch: pytest.MonkeyPatch, client: TestClient
+) -> None:
+    from app.storage.database import StorageUnavailable
+
+    def down(*args: object, **kwargs: object) -> None:
+        raise StorageUnavailable(
+            "connection to server at 10.1.2.3 failed: password authentication failed"
+        )
+
+    monkeypatch.setattr("app.auth.session.AuthService.login", down)
+    page = client.get("/login")
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)  # type: ignore[union-attr]
+    response = client.post("/login", data={"csrf_token": token, "username": "a", "password": "b"})
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.text
+    assert "10.1.2.3" not in response.text and "password authentication" not in response.text
+
+
+def test_secrets_never_appear_in_the_application_log(
+    admin_client: TestClient, admin: object, capsys: pytest.CaptureFixture[str], secret_key: str
+) -> None:
+    setup_logging("DEBUG")
+    admin_client.get("/security")
+    admin_client.get("/audit")
+    logged = capsys.readouterr()
+    assert secret_key not in logged.out + logged.err
+    assert (admin_client.cookies.get("__Host-td_session") or "-") not in logged.out + logged.err
 
 
 def test_env_example_contains_placeholders_only() -> None:
@@ -95,7 +125,14 @@ def test_env_example_contains_placeholders_only() -> None:
         if "=" in line and not line.startswith("#"):
             key, _, value = line.partition("=")
             values[key] = value
-    for key in ("TD_SECRET_KEY", "POSTGRES_PASSWORD", "REDIS_PASSWORD", "GRAFANA_ADMIN_PASSWORD"):
+    for key in (
+        "TD_SECRET_KEY",
+        "POSTGRES_PASSWORD",
+        "REDIS_PASSWORD",
+        "GRAFANA_ADMIN_PASSWORD",
+        "TD_DB_APP_PASSWORD",
+        "TD_DB_CTL_PASSWORD",
+    ):
         assert values[key].startswith("CHANGE_ME"), key
 
 

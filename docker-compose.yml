@@ -11,6 +11,10 @@ x-hardening: &hardening
     driver: json-file
     options: {max-size: "10m", max-file: "3"}
 
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+
 services:
   caddy:
     <<: *hardening
@@ -40,10 +44,32 @@ services:
     mem_limit: 128m
     pids_limit: 100
 
+  # One-shot: creates/refreshes the runtime DB roles and applies migrations as the DB owner.
+  # Only this service (and postgres) ever sees the owner password.
+  migrate:
+    <<: *hardening
+    restart: "no"
+    build: *app-build
+    image: tradingdots-app:phase2
+    user: "10001:10001"
+    command: ["python", "-m", "app.storage.database", "migrate"]
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_DB_OWNER_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      TD_DB_APP_PASSWORD: ${TD_DB_APP_PASSWORD:?set in .env}
+      TD_DB_CTL_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    networks: [backend]
+    depends_on:
+      postgres: {condition: service_healthy}
+    mem_limit: 256m
+    pids_limit: 100
+
   app:
     <<: *hardening
-    build: {context: ., dockerfile: Dockerfile}
-    image: tradingdots-app:phase1
+    build: *app-build
+    image: tradingdots-app:phase2
     user: "10001:10001"
     expose: ["8000"]
     environment:
@@ -53,9 +79,13 @@ services:
       TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
       TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
       TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+      TD_DB_USER: td_app
+      TD_DB_PASSWORD: ${TD_DB_APP_PASSWORD:?set in .env}
     read_only: true
     tmpfs: ["/tmp:size=16m"]
-    networks: [edge_app]
+    networks: [edge_app, backend]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD", "python", "scripts/healthcheck.py"]
       interval: 15s
@@ -108,6 +138,34 @@ services:
     mem_limit: 256m
     pids_limit: 100
 
+  # Host CLI for account bootstrap. Never started by `make up`. Uses the restricted td_ctl role.
+  #   docker compose run --rm -it ctl python scripts/create_admin.py
+  #   docker compose run --rm -it ctl python scripts/rotate_admin_password.py
+  ctl:
+    <<: *hardening
+    restart: "no"
+    profiles: [ops]
+    build: *app-build
+    image: tradingdots-app:phase2
+    user: "10001:10001"
+    command: ["python", "-m", "app.cli", "validate-config"]
+    stdin_open: true
+    tty: true
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+      TD_DB_USER: td_ctl
+      TD_DB_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    networks: [backend]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    mem_limit: 256m
+    pids_limit: 100
+
   # ---- Placeholders (profile "monitoring"; not routed by Caddy until Phase 3) ----
   prometheus:
     <<: *hardening
@@ -142,9 +200,13 @@ services:
 
 networks:
   edge_public: {}                    # Caddy only: the sole network with outbound access
-  edge_app: {internal: true}         # Caddy <-> app
+  edge_app:                          # Caddy <-> app. Static subnet: the app trusts X-Forwarded-For
+    internal: true                   # only from this network (config/base.yaml trusted_proxies)
+    ipam:
+      config:
+        - subnet: 172.29.10.0/24
   edge_grafana: {internal: true}     # Caddy <-> Grafana placeholder
-  backend: {internal: true}          # PostgreSQL, Redis (no app attached in Phase 1)
+  backend: {internal: true}          # PostgreSQL, Redis, app (DB only), migrate, ctl
   monitoring: {internal: true}       # Prometheus <-> Grafana
 
 volumes:

@@ -15,7 +15,7 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY app ./app
 COPY config ./config
-COPY scripts/healthcheck.py ./scripts/healthcheck.py
+COPY scripts/healthcheck.py scripts/create_admin.py scripts/rotate_admin_password.py ./scripts/
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10001:10001
 # Documentation only: EXPOSE does not publish. Compose never publishes this port.

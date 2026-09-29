@@ -3,7 +3,7 @@
          hx-get="/partials/status" hx-trigger="every 30s" hx-swap="outerHTML">
   <h2>Server status</h2>
   <p>Server time: <time datetime="{{ now.isoformat() }}">{{ now.strftime("%Y-%m-%d %H:%M:%S") }} UTC</time></p>
-  <p>Data sources: none connected (Phase 1 shell)</p>
+  <p>Data sources: none connected</p>
 </section>
 {%- endmacro %}
 <!doctype html>
@@ -12,8 +12,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex, nofollow">
   <meta name="htmx-config" content='{"allowEval":false,"selfRequestsOnly":true,"historyCacheSize":0,"includeIndicatorStyles":false}'>
-  <title>{{ title|default("Overview") }} · {{ app_name }}</title>
+  <title>{{ title|default("TradingDots") }} · {{ app_name }}</title>
   <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
@@ -24,17 +25,30 @@
   </div>
   <header class="site-header">
     <p class="brand">{{ app_name }}</p>
+    {% if auth is defined and auth %}
+    <p class="whoami">Signed in as <strong>{{ auth.username }}</strong> ({{ auth.role }})</p>
     <nav aria-label="Main">
       <ul>
-        <li><a href="/" {% if active|default("overview") == "overview" %}aria-current="page"{% endif %}>Overview</a></li>
-        {% for item in nav_items %}
+        <li><a href="/" {% if active|default("") == "overview" %}aria-current="page"{% endif %}>Overview</a></li>
+        {% for item in disabled_nav %}
         <li><span class="nav-later" aria-disabled="true">{{ item }} <small>(not available yet)</small></span></li>
         {% endfor %}
+        {% if auth.is_admin %}
+        <li><a href="/audit" {% if active|default("") == "audit" %}aria-current="page"{% endif %}>Audit</a></li>
+        {% endif %}
+        <li><a href="/security" {% if active|default("") == "security" %}aria-current="page"{% endif %}>Security</a></li>
         {% if grafana_url %}
         <li><a href="{{ grafana_url }}" rel="noopener noreferrer" target="_blank">Grafana<span class="visually-hidden"> (opens in a new tab)</span></a></li>
         {% endif %}
+        <li>
+          <form class="inline" method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+            <button type="submit">Sign out</button>
+          </form>
+        </li>
       </ul>
     </nav>
+    {% endif %}
   </header>
   <main id="main">
     {% block content %}{% endblock %}

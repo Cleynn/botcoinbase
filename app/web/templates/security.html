@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Security</h1>
+{% if view.message_text %}
+<div class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">
+  <p>{{ view.message_text }}</p>
+  {% if view.rules %}<ul>{% for rule in view.rules %}<li>{{ rule }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+
+<section aria-labelledby="account-h">
+  <h2 id="account-h">Your account</h2>
+  <dl class="tiles">
+    <div class="tile"><dt>Username</dt><dd>{{ view.username }}</dd></div>
+    <div class="tile"><dt>Role</dt><dd>{{ view.role }}</dd></div>
+    <div class="tile"><dt>Password last changed</dt><dd>{{ view.password_changed }}</dd></div>
+  </dl>
+</section>
+
+<section aria-labelledby="sessions-h">
+  <h2 id="sessions-h">Your active sessions</h2>
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Active sessions for your account</caption>
+      <thead><tr><th scope="col">Started</th><th scope="col">Last active</th><th scope="col">Ends (absolute)</th><th scope="col">Action</th></tr></thead>
+      <tbody>
+      {% for s in view.sessions %}
+        <tr>
+          <td>{{ s.started }}</td><td>{{ s.last_active }}</td><td>{{ s.expires }}</td>
+          <td>
+            {% if s.current %}This session
+            {% else %}
+            <form class="inline" method="post" action="/security/sessions/revoke">
+              <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+              <input type="hidden" name="session_id" value="{{ s.id }}">
+              <button type="submit">Sign out</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/security/sessions/revoke-others">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><button type="submit">Sign out all other sessions</button></p>
+  </form>
+</section>
+
+<section aria-labelledby="password-h">
+  <h2 id="password-h">Change password</h2>
+  <p>Changing your password signs out every other session and replaces this one.</p>
+  <form method="post" action="/security/password" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="current_password">Current password</label>
+       <input id="current_password" name="current_password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+    <p><label for="new_password">New password (at least 14 characters)</label>
+       <input id="new_password" name="new_password" type="password" autocomplete="new-password" maxlength="1024" required></p>
+    <p><label for="confirm_password">Repeat new password</label>
+       <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" maxlength="1024" required></p>
+    <p><button type="submit">Change password</button></p>
+  </form>
+</section>
+
+<section aria-labelledby="reauth-h">
+  <h2 id="reauth-h">Confirm your password</h2>
+  <p>Sensitive actions need a fresh confirmation. Each confirmation is valid for {{ view.reauth_window }} seconds and for one action.
+     Status: <strong>{{ "confirmed" if view.reauth_active else "not confirmed" }}</strong>.</p>
+  <form method="post" action="/security/reauth" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="reauth_password">Password</label>
+       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+    <p><button type="submit">Confirm password</button></p>
+  </form>
+</section>
+
+{% if view.users is not none %}
+<section aria-labelledby="users-h">
+  <h2 id="users-h">Users and session revocation</h2>
+  <p>Revoking signs the user out everywhere. Confirm your password above first, then type the phrase exactly.</p>
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">User accounts</caption>
+      <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Active sessions</th><th scope="col">Revoke sessions</th></tr></thead>
+      <tbody>
+      {% for u in view.users %}
+        <tr>
+          <td>{{ u.username }}</td><td>{{ u.role }}</td><td>{{ u.status }}</td><td>{{ u.sessions }}</td>
+          <td>
+            <form method="post" action="/security/users/revoke-sessions" class="stacked">
+              <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+              <input type="hidden" name="user_id" value="{{ u.id }}">
+              <label for="confirm-{{ u.id }}">Type <code>{{ u.phrase }}</code></label>
+              <input id="confirm-{{ u.id }}" name="confirmation" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="128" required>
+              <button type="submit">Revoke</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

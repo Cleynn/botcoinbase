@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 from collections.abc import Mapping
@@ -13,6 +14,7 @@ import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     SecretStr,
     ValidationError,
     field_validator,
@@ -33,8 +35,19 @@ _ENV_FIELDS = {
     "TD_GRAFANA_HOSTNAME": "grafana_hostname",
     "TD_LOG_LEVEL": "log_level",
     "TD_SECRET_KEY": "secret_key",
+    "TD_DB_USER": "database.user",
+    "TD_DB_PASSWORD": "database.password",
 }
-_ENV_CONTROL = {"TD_PROFILE", "TD_CONFIG_DIR", "TD_SECRET_KEY_FILE"}
+# Accepted but not mapped onto Settings (used by profile selection, the migrate command and
+# environment-file validation).
+_ENV_CONTROL = {
+    "TD_PROFILE",
+    "TD_CONFIG_DIR",
+    "TD_SECRET_KEY_FILE",
+    "TD_DB_OWNER_PASSWORD",
+    "TD_DB_APP_PASSWORD",
+    "TD_DB_CTL_PASSWORD",
+}
 _KNOWN_ENV = set(_ENV_FIELDS) | _ENV_CONTROL
 
 _HOSTNAME_RE = re.compile(
@@ -52,6 +65,11 @@ def _reject_float(value: Any) -> Any:
     return value
 
 
+_COOKIE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{3,64}$")
+_DB_IDENT_RE = re.compile(r"^[A-Za-z0-9_]{1,63}$")
+_DB_HOST_RE = re.compile(r"^[A-Za-z0-9_.:/-]{1,255}$")
+
+
 class CookieSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -59,6 +77,66 @@ class CookieSettings(BaseModel):
     httponly: bool
     samesite: Literal["strict", "lax", "none"]
     path: str = "/"
+    name: str = "__Host-td_session"
+    login_name: str = "__Host-td_login"
+
+    @model_validator(mode="after")
+    def _names(self) -> CookieSettings:
+        for value in (self.name, self.login_name):
+            if not _COOKIE_NAME_RE.fullmatch(value):
+                raise ValueError("cookie names may only use letters, digits, '_' and '-'")
+            if value.startswith("__Host-") and not (self.secure and self.path == "/"):
+                raise ValueError("a __Host- cookie requires secure=true and path=/")
+        if self.name == self.login_name:
+            raise ValueError("session and login cookie names must differ")
+        return self
+
+
+class AuthSettings(BaseModel):
+    """Session, password and login-throttle parameters (production minimums checked separately)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    idle_timeout_seconds: int = Field(1800, ge=60, le=3600)
+    absolute_timeout_seconds: int = Field(43200, ge=300, le=86400)
+    max_sessions_per_user: int = Field(5, ge=1, le=10)
+    reauth_window_seconds: int = Field(120, ge=30, le=600)
+    touch_interval_seconds: int = Field(60, ge=1, le=600)
+    argon2_memory_kib: int = Field(47104, ge=8)
+    argon2_time_cost: int = Field(2, ge=1, le=10)
+    argon2_parallelism: int = Field(1, ge=1, le=8)
+    password_min_length: int = Field(14, ge=8, le=64)
+    password_max_length: int = Field(128, ge=64, le=1024)
+    login_window_seconds: int = Field(900, ge=60, le=86400)
+    login_pair_max_failures: int = Field(5, ge=1, le=100)
+    login_client_max_failures: int = Field(20, ge=1, le=1000)
+    login_account_max_failures: int = Field(30, ge=1, le=1000)
+
+    @model_validator(mode="after")
+    def _ordering(self) -> AuthSettings:
+        if self.idle_timeout_seconds > self.absolute_timeout_seconds:
+            raise ValueError("idle timeout cannot exceed the absolute timeout")
+        return self
+
+
+class DatabaseSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    host: str = "postgres"
+    port: int = Field(5432, ge=1, le=65535)
+    name: str = "tradingdots"
+    user: str = "td_app"
+    owner_user: str = "tradingdots"
+    password: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> DatabaseSettings:
+        if not _DB_HOST_RE.fullmatch(self.host):
+            raise ValueError("database host contains invalid characters")
+        for value in (self.name, self.user, self.owner_user):
+            if not _DB_IDENT_RE.fullmatch(value):
+                raise ValueError("database identifiers may only use letters, digits and '_'")
+        return self
 
 
 class PairPolicy(BaseModel):
@@ -115,7 +193,20 @@ class Settings(BaseModel):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cookie: CookieSettings | None = None
     secret_key: SecretStr | None = None
+    trusted_proxies: tuple[str, ...] = ()
+    auth: AuthSettings = AuthSettings()
+    database: DatabaseSettings = DatabaseSettings()
     pair_policy: PairPolicy
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _proxies(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for item in value:
+            try:
+                ipaddress.ip_network(item, strict=False)
+            except ValueError as exc:
+                raise ValueError("trusted_proxies must be IP addresses or CIDR networks") from exc
+        return value
 
     @field_validator("mode")
     @classmethod
@@ -158,6 +249,19 @@ def production_problems(settings: Settings) -> list[str]:
     found = secret_problem("TD_SECRET_KEY", key)
     if found:
         problems.append(found)
+    db_password = (
+        settings.database.password.get_secret_value() if settings.database.password else None
+    )
+    found = secret_problem("TD_DB_PASSWORD", db_password)
+    if found:
+        problems.append(found)
+    if settings.database.user in {settings.database.owner_user, "postgres"}:
+        problems.append("the application must not connect as the database owner or superuser")
+    auth = settings.auth
+    if auth.argon2_memory_kib < 19456 or auth.argon2_time_cost < 2:
+        problems.append("argon2 parameters are below the production minimum (19456 KiB, t=2)")
+    if auth.password_min_length < 14:
+        problems.append("password_min_length must be at least 14 in production")
     cookie = settings.cookie
     if cookie is None:
         problems.append("production cookie settings are absent")
@@ -170,6 +274,8 @@ def production_problems(settings: Settings) -> list[str]:
             problems.append("cookie.samesite must be strict")
         if cookie.path != "/":
             problems.append("cookie.path must be /")
+        if not (cookie.name.startswith("__Host-") and cookie.login_name.startswith("__Host-")):
+            problems.append("cookie names must use the __Host- prefix")
     if not valid_hostname(settings.app_hostname):
         problems.append("TD_APP_HOSTNAME is missing or invalid")
     if not valid_hostname(settings.grafana_hostname):
@@ -210,6 +316,28 @@ def _parse_bool(name: str, raw: str) -> bool:
     raise ConfigError(f"{name} must be true or false")
 
 
+def _set_path(data: dict[str, Any], path: str, value: Any) -> None:
+    *parents, leaf = path.split(".")
+    current = data
+    for part in parents:
+        nested = current.setdefault(part, {})
+        if not isinstance(nested, dict):
+            raise ConfigError(f"configuration key '{part}' must be a mapping")
+        current = nested
+    current[leaf] = value
+
+
+def load_database_target(env: Mapping[str, str] | None = None) -> DatabaseSettings:
+    """Load only the non-secret database block (used by the migrate command)."""
+    env = os.environ if env is None else env
+    config_dir = Path(env.get("TD_CONFIG_DIR") or DEFAULT_CONFIG_DIR)
+    data = _read_yaml(config_dir / "base.yaml")
+    try:
+        return DatabaseSettings.model_validate(data.get("database", {}))
+    except ValidationError as exc:
+        raise ConfigError("invalid database configuration") from exc
+
+
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     """Load YAML profile plus whitelisted environment overrides, then validate for production."""
     env = os.environ if env is None else env
@@ -228,7 +356,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     for var, field in _ENV_FIELDS.items():
         if var in env:
-            data[field] = _parse_bool(var, env[var]) if field == "debug" else env[var]
+            _set_path(data, field, _parse_bool(var, env[var]) if field == "debug" else env[var])
 
     key_file = env.get("TD_SECRET_KEY_FILE")
     if key_file:

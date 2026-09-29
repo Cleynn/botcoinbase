@@ -12,14 +12,32 @@
 ```bash
 ./scripts/bootstrap.sh              # creates .env (0600), random secrets, prints none
 make verify-security-config         # strict; must PASS
-make up                             # builds the app image, starts caddy, app, postgres, redis
+make up                             # builds the image; postgres -> migrate (one-shot) -> app -> caddy
 make health                         # app health via the internal probe
 make logs
 ```
+`migrate` connects as the database owner, creates/refreshes the `td_app` (web) and `td_ctl` (host CLI) roles from `TD_DB_APP_PASSWORD` / `TD_DB_CTL_PASSWORD`, applies pending migrations and exits. The app refuses to start if the schema is older or newer than the code.
+
+## Accounts (host only)
+There is no signup, invitation or reset. Run these from an interactive terminal (they refuse pipes and take no arguments):
+```bash
+docker compose run --rm -it ctl python scripts/create_admin.py            # first ADMIN only; refuses if one exists
+docker compose run --rm -it ctl python scripts/rotate_admin_password.py   # ends all that user's sessions
+```
+Passwords: at least 14 characters, not common, not containing the username or product names. A locked-out or forgotten ADMIN password is recovered with `rotate_admin_password.py`. VIEWER provisioning is not available yet.
+
+## Sessions, throttling and audit
+- Idle timeout 30 min, absolute 12 h, 5 sessions per user. ADMINs can end a user's sessions from **Security** (confirm password, then type the phrase).
+- Login is throttled per account+client (5 failures / 15 min), per client (20) and per account (30). Blocked attempts do not extend the lock; wait for the window (the response carries `Retry-After`).
+- **Audit** shows the newest events and whether the hash chain verifies. `BROKEN` means rows were edited, removed or truncated: treat it as an incident (`docs/incident-response.md` IR-2), do not delete anything.
+- Database schema: `docker compose run --rm migrate` re-applies pending migrations. Downgrades exist only for development (`python -m app.storage.database rollback --to N --i-understand-data-loss`) and destroy data; production rollback is roll-forward.
+
+## Behind Caddy
+The app trusts `X-Forwarded-For` only from `172.29.10.0/24` (the static `edge_app` subnet). If that subnet conflicts with your host network, change it in `docker-compose.yml` **and** `trusted_proxies` in `config/base.yaml` together. If they disagree every client looks like the proxy and login throttling becomes global.
 Prometheus/Grafana placeholders: `docker compose --profile monitoring up -d` (not routed by Caddy until Phase 3).
 
 ## Verify from outside
-`https://tradingdots.onthewall.ovh/` shows the banner; `/healthz`, `/docs`, `/openapi.json`, `/metrics` return 404; the Grafana host returns 503; an external scan shows only 80/443.
+`https://tradingdots.onthewall.ovh/` redirects to the login page, which shows the banner; after sign-in the overview loads; `/healthz`, `/docs`, `/openapi.json`, `/metrics` return 404; the Grafana host returns 503; an external scan shows only 80/443.
 
 ## Resource guidance (6 vCPU, 12 GB RAM, 100 GB disk)
 | Service | Memory limit |

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit</h1>
+<p class="msg {{ 'success' if view.chain_ok else 'error' }}" role="{{ 'status' if view.chain_ok else 'alert' }}">{{ view.chain_text }}</p>
+<form method="get" action="/audit" class="filter">
+  <label for="code">Event type</label>
+  <select id="code" name="code">
+    <option value="" {% if not view.code %}selected{% endif %}>All events</option>
+    {% for c in view.codes %}<option value="{{ c }}" {% if c == view.code %}selected{% endif %}>{{ c }}</option>{% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+</form>
+<div class="table-wrap">
+  <table>
+    <caption class="visually-hidden">Audit events, newest first</caption>
+    <thead><tr><th scope="col">#</th><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Result</th><th scope="col">Actor</th><th scope="col">Target</th><th scope="col">Reason</th><th scope="col">Client</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+    {% for r in view.rows %}
+      <tr>
+        <td>{{ r.seq }}</td><td>{{ r.when }}</td><td>{{ r.code }}</td><td>{{ r.result }}</td>
+        <td>{{ r.actor }}</td><td>{{ r.target }}</td><td>{{ r.reason }}</td><td>{{ r.client }}</td><td>{{ r.detail }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9">No events match.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if view.next_cursor %}
+<p><a href="/audit?before={{ view.next_cursor }}{% if view.code %}&amp;code={{ view.code|urlencode }}{% endif %}">Older events</a></p>
+{% endif %}
+{% endblock %}

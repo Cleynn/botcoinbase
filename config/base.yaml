@@ -6,8 +6,34 @@ mode: BACKTEST
 log_level: INFO
 app_hostname: tradingdots.onthewall.ovh
 grafana_hostname: grafana.tradingdots.onthewall.ovh
+# Only the Caddy container (edge_app network, static subnet in docker-compose.yml) may supply
+# X-Forwarded-For. Peers outside these networks are never trusted for client identity.
+trusted_proxies: [172.29.10.0/24]
 cookie:
   secure: true
   httponly: true
   samesite: strict
   path: /
+  name: __Host-td_session
+  login_name: __Host-td_login
+auth:
+  idle_timeout_seconds: 1800
+  absolute_timeout_seconds: 43200
+  max_sessions_per_user: 5
+  reauth_window_seconds: 120
+  touch_interval_seconds: 60
+  argon2_memory_kib: 47104
+  argon2_time_cost: 2
+  argon2_parallelism: 1
+  password_min_length: 14
+  password_max_length: 128
+  login_window_seconds: 900
+  login_pair_max_failures: 5
+  login_client_max_failures: 20
+  login_account_max_failures: 30
+database:
+  host: postgres
+  port: 5432
+  name: tradingdots
+  user: td_app
+  owner_user: tradingdots

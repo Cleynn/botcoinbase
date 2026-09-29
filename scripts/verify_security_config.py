@@ -22,7 +22,13 @@ from app.config import ConfigError, load_settings, secret_problem  # noqa: E402
 
 PUBLISHER = "caddy"
 ALLOWED_PUBLISHED = {("80", "tcp"), ("443", "tcp")}
-EXTRA_SECRETS = ("POSTGRES_PASSWORD", "REDIS_PASSWORD", "GRAFANA_ADMIN_PASSWORD")
+EXTRA_SECRETS = (
+    "POSTGRES_PASSWORD",
+    "REDIS_PASSWORD",
+    "GRAFANA_ADMIN_PASSWORD",
+    "TD_DB_APP_PASSWORD",
+    "TD_DB_CTL_PASSWORD",
+)
 DUMMY_SECRET = "x" * 40  # only used in --example mode to skip placeholder detection
 
 
@@ -44,6 +50,7 @@ def check_env(env: dict[str, str], *, example: bool, path: Path | None = None) -
     td_env = {k: v for k, v in env.items() if k.startswith("TD_")}
     if example:
         td_env["TD_SECRET_KEY"] = DUMMY_SECRET
+        td_env["TD_DB_PASSWORD"] = DUMMY_SECRET
     else:
         for name in EXTRA_SECRETS:
             found = secret_problem(name, env.get(name))
@@ -51,6 +58,9 @@ def check_env(env: dict[str, str], *, example: bool, path: Path | None = None) -
                 problems.append(found)
     if td_env.get("TD_ENVIRONMENT") != "production":
         problems.append("TD_ENVIRONMENT must be production")
+    if not example:
+        # Compose hands the app role's password to the app as TD_DB_PASSWORD.
+        td_env["TD_DB_PASSWORD"] = env.get("TD_DB_APP_PASSWORD", "")
     # Load with the file's TD_* variables only: no ambient process environment is consulted.
     try:
         load_settings(td_env)
@@ -103,7 +113,8 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
         if not svc.get("profiles"):
             if not svc.get("restart"):
                 problems.append(f"service '{name}' has no restart policy")
-            if not svc.get("healthcheck"):
+            one_shot = str(svc.get("restart")) == "no"  # migrate: runs to completion, no liveness
+            if not svc.get("healthcheck") and not one_shot:
                 problems.append(f"service '{name}' has no health check")
 
     app_user = str(services.get("app", {}).get("user", ""))

@@ -122,6 +122,8 @@ def _good_env() -> dict[str, str]:
         "POSTGRES_PASSWORD": secrets.token_urlsafe(48),
         "REDIS_PASSWORD": secrets.token_urlsafe(48),
         "GRAFANA_ADMIN_PASSWORD": secrets.token_urlsafe(48),
+        "TD_DB_APP_PASSWORD": secrets.token_urlsafe(48),
+        "TD_DB_CTL_PASSWORD": secrets.token_urlsafe(48),
     }
 
 
@@ -134,10 +136,39 @@ def test_env_validator_accepts_good_and_rejects_bad(verify: ModuleType) -> None:
         ("POSTGRES_PASSWORD", "CHANGE_ME"),
         ("REDIS_PASSWORD", ""),
         ("GRAFANA_ADMIN_PASSWORD", "short"),
+        ("TD_DB_APP_PASSWORD", "CHANGE_ME"),
+        ("TD_DB_APP_PASSWORD", ""),
+        ("TD_DB_CTL_PASSWORD", "short"),
         ("TD_APP_HOSTNAME", "not a host"),
         ("TD_GRAFANA_HOSTNAME", ""),
     ]:
         assert verify.check_env({**_good_env(), key: value}, example=False), key
+
+
+def test_compose_gives_each_service_only_its_own_database_role(compose: dict[str, Any]) -> None:
+    services = compose["services"]
+    assert services["app"]["environment"]["TD_DB_USER"] == "td_app"
+    assert services["ctl"]["environment"]["TD_DB_USER"] == "td_ctl"
+    assert "ctl" not in [
+        n for n, sv in services.items() if not sv.get("profiles")
+    ]  # never started by `make up`
+    owner = "TD_DB_OWNER_PASSWORD"
+    holders = {n for n, sv in services.items() if owner in sv.get("environment", {})}
+    assert holders == {"migrate"}  # only the one-shot migration ever sees the owner password
+    assert "TD_DB_CTL_PASSWORD" not in services["app"]["environment"]
+
+
+def test_app_reaches_the_database_only_over_an_internal_network(compose: dict[str, Any]) -> None:
+    services, networks = compose["services"], compose["networks"]
+    assert "backend" in services["app"]["networks"] and networks["backend"]["internal"] is True
+    assert set(services["app"]["networks"]) == {"edge_app", "backend"}
+    assert "edge_public" not in services["app"]["networks"]  # the app has no outbound route
+
+
+def test_migrate_is_a_one_shot_gate_for_the_app(compose: dict[str, Any]) -> None:
+    services = compose["services"]
+    assert str(services["migrate"]["restart"]) == "no"
+    assert services["app"]["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
 
 
 def test_env_example_fails_strict_but_passes_structure_check(verify: ModuleType) -> None:

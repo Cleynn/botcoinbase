@@ -12,10 +12,23 @@ Scope: the Phase 1 shell only. No trading, credentials, or business data exist y
 | T6 | Host header abuse / unknown vhost | TrustedHost middleware; Caddy serves configured hosts only | Tested (app); Caddy unverified |
 | T7 | Path traversal via static | Starlette StaticFiles; tests for encoded traversal | Tested |
 | T8 | Introspection (`/docs`, `/openapi.json`, `/metrics`) | Disabled in app; 404 at Caddy | Tested (app) |
-| T9 | Unauthenticated access to dashboard | **Accepted for Phase 1**: the shell contains no data and no controls. Authentication is Phase 2 and **must** land before any real data is shown | Accepted risk |
+| T9 | Unauthenticated access to dashboard | Resolved in Phase 2: every page except `/login` and `/healthz` requires a session (default-deny guard, route-inventory test) | Tested |
 | T10 | Compromised container | Non-root app user, `cap_drop: ALL`, `no-new-privileges`, read-only root fs, tmpfs, memory/pids limits, no egress | Config only; not runtime-verified (no Docker daemon available) |
 | T11 | Supply chain (images, packages) | `uv.lock` pins Python packages; HTMX integrity-checked against the npm registry hash | **Open**: base image digests not pinned; lock has no hash-verified install in the image beyond uv defaults |
 | T12 | Secret exposure through Compose environment | Secrets come from `.env` (0600) into container env (visible via `docker inspect` to Docker admins) | **Accepted for Phase 1**; file-based secrets are a later hardening |
 | T13 | Single host, no independent watcher or off-host backup | Owner decision DEC-006: not implemented or planned. Risk accepted by the owner | Accepted; keeps live blocked |
 
 Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange failure modes, LLM content, uploads.
+
+## Phase 2 additions
+| # | Threat | Mitigation | Status |
+|---|---|---|---|
+| T14 | Credential guessing / stuffing | Argon2id, generic failure, account+client, client-wide and account-wide throttles, throttled reauth/password-change | Tested |
+| T15 | Account enumeration | Identical response and equivalent work for unknown/disabled/wrong; throttle keys use the submitted name whether or not it exists | Tested |
+| T16 | Session theft/fixation/replay | Opaque hashed tokens, `__Host-` HttpOnly Secure Strict cookies, rotation on login/password change, idle+absolute expiry, revocation, `Clear-Site-Data` | Tested (client and Chromium) |
+| T17 | CSRF / login CSRF | Session-bound HMAC tokens, separate pre-session login token, Origin/Fetch-Metadata, SameSite=Strict, app-wide guard | Tested (incl. real cross-site form) |
+| T18 | Privilege escalation / IDOR | Permission matrix, default deny, object checks on session ids, extra form fields rejected, service-level permission check | Tested |
+| T19 | Audit tampering | Append-only triggers (also for the owner), hash chain verified on `/audit`, web role cannot modify history | Tested; **no off-host anchor (DEC-006)** |
+| T20 | Web-process compromise creating users | Only `td_ctl` can INSERT users; but a compromised web process can still act as signed-in users and change passwords (RR-1) | Partly mitigated; live blocker |
+| T21 | Lock-out of the ADMIN by attackers | Account-wide throttle can be triggered by distributed guessing; the window is 15 min and the host CLI can always rotate the password | Accepted |
+| T22 | Wrong client identity behind the proxy | `X-Forwarded-For` honoured only from `trusted_proxies`; mismatch with the Compose subnet would make throttling global | Runbook warning; unverified on a host |

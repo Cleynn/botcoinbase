@@ -8,13 +8,16 @@ Status: implemented as far as Phase 1 goes; baseline items beyond it are not bui
 Internet -> caddy (TCP 80/443, only published ports)
               |-- edge_app (internal) -----> app:8000  (FastAPI + Jinja2 + HTMX)
               '-- edge_grafana (internal) -> 503 placeholder (Grafana profile "monitoring", Phase 3)
-backend (internal): postgres, redis   (no service attached; app does not use them in Phase 1)
+backend (internal): postgres, redis, app (PostgreSQL only), migrate (one-shot), ctl (profile ops)
 monitoring (internal): prometheus, grafana   (profile "monitoring", off by default, placeholders)
 ```
 
 - Only `edge_public` has outbound access, and only Caddy is attached to it. The app has **no egress**.
 - No host ports other than Caddy's 80 and 443. Enforced by `scripts/verify_security_config.py` and tests.
-- The app is stateless in Phase 1: no database or Redis connection code exists.
+- The app stores users, sessions, login attempts and the audit log in PostgreSQL. Redis is deployed but unused.
+- Roles: `tradingdots` (owner, used only by `migrate`), `td_app` (web), `td_ctl` (host CLI). See `app/storage/migrations/0001_auth.sql` for the exact grants.
+- Layers: `app/api` (routes, dependencies, errors) -> `app/auth` (password, session service, CSRF, throttling, audit, authorization) -> `app/storage` (repositories, migrations) ; `app/domain` holds enums, permissions and models; `app/web` holds templates and view models.
+- Guards registered app-wide: `access_guard` (default deny) and `csrf_guard` (all unsafe methods); request-size limit and trusted-host middleware wrap everything.
 
 ## Application
 
@@ -29,5 +32,5 @@ monitoring (internal): prometheus, grafana   (profile "monitoring", off by defau
 - Logging: `config/logging.yaml` + `RedactingFormatter` (credentials, cookies, URLs with passwords, IPs, exception text).
 
 ## Out of scope in Phase 1
-Authentication and sessions, audit records, database schema/migrations, monitoring, exchange adapter, orders,
+Monitoring, exchange adapter, orders,
 pairs, data import, LLM packages/proposals, bot controls, backups.

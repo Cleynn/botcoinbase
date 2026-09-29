@@ -9,6 +9,9 @@ dependencies = [
     "jinja2>=3.1,<4",
     "pydantic>=2.7,<3",
     "pyyaml>=6,<7",
+    "argon2-cffi>=23.1",
+    "psycopg[binary]>=3.2,<4",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]
@@ -18,6 +21,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML",
+    "pgserver>=0.1.4",
 ]
 
 [tool.uv]
@@ -37,9 +41,15 @@ extend-exclude = ["tests/pending"]
 select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "S608"]
 "scripts/**" = ["T201"]
 "app/cli.py" = ["T201"]
+"app/storage/database.py" = ["T201"]  # migrate command prints status
+# Only fixed column-list constants are interpolated into SQL; all values are bound parameters.
+"app/storage/repositories.py" = ["S608"]
+# Enum members named PASSWORD_* are event/permission names, not credentials.
+"app/domain/enums.py" = ["S105"]
+"app/domain/permissions.py" = ["S105"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -47,3 +57,5 @@ strict = true
 files = ["app", "scripts", "tests"]
 exclude = ["tests/pending/"]
 plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+mypy_path = "."
