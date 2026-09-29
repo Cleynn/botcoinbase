@@ -1,0 +1,168 @@
+# Alert rules. They are EVALUATED and DISPLAYED only: there is no Alertmanager, webhook, e-mail or
+# any other transport, and a rule cannot call the bot, an exchange or the configuration.
+# Only metrics that exist are used. Alerts for components that are not built (reconciliation,
+# kill switch, data freshness, ...) are listed as reserved in docs/alert-policy.md, not defined here.
+# Labels: severity (critical | high | warn | info), component. Annotations: summary, description,
+# runbook (a relative path into docs/).
+groups:
+  - name: infrastructure
+    rules:
+      - alert: TargetDown
+        expr: up{job=~"prometheus|tradingdots-app|node"} == 0
+        for: 1m
+        labels: {severity: critical, component: monitoring}
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
+          description: "Prometheus cannot scrape the {{ $labels.job }} target."
+          runbook: docs/alert-policy.md#targetdown
+      - alert: DiskUsageWarn
+        expr: node:filesystem_utilisation:ratio > 0.70
+        for: 10m
+        labels: {severity: warn, component: node}
+        annotations:
+          summary: "Root filesystem above 70%"
+          description: "Free space is shrinking; review logs, images and Prometheus data."
+          runbook: docs/alert-policy.md#diskusagewarn
+      - alert: DiskUsageHigh
+        expr: node:filesystem_utilisation:ratio > 0.80
+        for: 10m
+        labels: {severity: high, component: node}
+        annotations:
+          summary: "Root filesystem above 80%"
+          description: "Free disk space is low."
+          runbook: docs/alert-policy.md#diskusagehigh
+      - alert: DiskUsageCritical
+        expr: node:filesystem_utilisation:ratio > 0.90
+        for: 5m
+        labels: {severity: critical, component: node}
+        annotations:
+          summary: "Root filesystem above 90%"
+          description: "The disk is nearly full; services may fail."
+          runbook: docs/alert-policy.md#diskusagecritical
+      - alert: MemoryPressure
+        expr: node:memory_utilisation:ratio > 0.90
+        for: 10m
+        labels: {severity: warn, component: node}
+        annotations:
+          summary: "Memory utilisation above 90%"
+          description: "Available memory is low."
+          runbook: docs/alert-policy.md#memorypressure
+      - alert: CpuSaturation
+        expr: node:cpu_utilisation:ratio5m > 0.90
+        for: 15m
+        labels: {severity: warn, component: node}
+        annotations:
+          summary: "CPU utilisation above 90%"
+          description: "The host has been CPU-bound for 15 minutes."
+          runbook: docs/alert-policy.md#cpusaturation
+      - alert: TsdbNearCap
+        expr: prometheus:tsdb_usage:ratio > 0.80
+        for: 15m
+        labels: {severity: warn, component: prometheus}
+        annotations:
+          summary: "Prometheus storage above 80% of its size cap"
+          description: "Prometheus will start deleting the oldest data at the cap."
+          runbook: docs/alert-policy.md#tsdbnearcap
+      - alert: PrometheusRuleFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        labels: {severity: warn, component: prometheus}
+        annotations:
+          summary: "Prometheus rule evaluations are failing"
+          description: "One or more rules failed to evaluate in the last 10 minutes."
+          runbook: docs/alert-policy.md#prometheusrulefailures
+
+  - name: application
+    rules:
+      - alert: AppMetricsMissing
+        expr: absent(up{job="tradingdots-app"})
+        for: 5m
+        labels: {severity: warn, component: app}
+        annotations:
+          summary: "The application scrape target is not configured"
+          description: "No up series exists for the tradingdots-app job."
+          runbook: docs/alert-policy.md#appmetricsmissing
+      - alert: DatabaseUnavailable
+        expr: tradingdots_db_up == 0
+        for: 1m
+        labels: {severity: critical, component: app}
+        annotations:
+          summary: "The application cannot reach its database"
+          description: "The database probe has been failing."
+          runbook: docs/alert-policy.md#databaseunavailable
+      - alert: SchemaMismatch
+        expr: tradingdots_db_schema_version != tradingdots_db_expected_schema_version
+        for: 1m
+        labels: {severity: critical, component: app}
+        annotations:
+          summary: "Database schema does not match the code"
+          description: "The database schema version differs from what this build requires."
+          runbook: docs/alert-policy.md#schemamismatch
+      - alert: Http5xxRatioHigh
+        expr: tradingdots:http_requests_5xx:ratio5m > 0.05
+        for: 5m
+        labels: {severity: high, component: app}
+        annotations:
+          summary: "More than 5% of web requests fail with a server error"
+          description: "The 5xx ratio has been above 5% for 5 minutes."
+          runbook: docs/alert-policy.md#http5xxratiohigh
+      - alert: HttpLatencyHigh
+        expr: tradingdots:http_request_duration_seconds:p95_5m > 2
+        for: 10m
+        labels: {severity: warn, component: app}
+        annotations:
+          summary: "95th percentile request latency above 2 seconds"
+          description: "Requests have been slow for 10 minutes."
+          runbook: docs/alert-policy.md#httplatencyhigh
+      - alert: CollectorErrors
+        expr: increase(tradingdots_collector_errors_total[15m]) > 0
+        labels: {severity: warn, component: app}
+        annotations:
+          summary: "The application failed to collect some metrics"
+          description: "A metrics collector reported errors in the last 15 minutes."
+          runbook: docs/alert-policy.md#collectorerrors
+
+  - name: security
+    rules:
+      - alert: AuditChainBroken
+        expr: tradingdots_audit_chain_ok == 0
+        labels: {severity: critical, component: security}
+        annotations:
+          summary: "The audit hash chain is broken"
+          description: "Audit rows were edited, removed or truncated. Treat as an incident."
+          runbook: docs/alert-policy.md#auditchainbroken
+      - alert: AuditChainVerifyStale
+        expr: time() - tradingdots_audit_last_verified_timestamp_seconds > 1800
+        for: 5m
+        labels: {severity: warn, component: security}
+        annotations:
+          summary: "The audit chain has not been verified for 30 minutes"
+          description: "Verification runs every few minutes while the application is healthy."
+          runbook: docs/alert-policy.md#auditchainverifystale
+      - alert: AuthFailureSpike
+        expr: tradingdots:auth_events:increase15m{event="auth.login.failure"} > 20
+        labels: {severity: warn, component: security}
+        annotations:
+          summary: "Many failed sign-ins in the last 15 minutes"
+          description: "More than 20 failed sign-in attempts were recorded."
+          runbook: docs/alert-policy.md#authfailurespike
+      - alert: LoginThrottleActive
+        expr: tradingdots:auth_events:increase15m{event="auth.login.throttled"} > 0
+        labels: {severity: info, component: security}
+        annotations:
+          summary: "Login throttling engaged"
+          description: "At least one client was throttled in the last 15 minutes."
+          runbook: docs/alert-policy.md#loginthrottleactive
+      - alert: DenialSpike
+        expr: sum(tradingdots:auth_events:increase15m{event=~"authz.denied|csrf.rejected|session.rejected"}) > 20
+        labels: {severity: warn, component: security}
+        annotations:
+          summary: "Many denied or rejected requests"
+          description: "More than 20 authorization denials, CSRF rejections or rejected sessions in 15 minutes."
+          runbook: docs/alert-policy.md#denialspike
+      - alert: AdminAccountChange
+        expr: sum(tradingdots:auth_events:increase15m{event=~"admin.created|admin.password_rotated|admin.sessions_revoked"}) > 0
+        labels: {severity: info, component: security}
+        annotations:
+          summary: "An administrative account action was recorded"
+          description: "An account was created, a password rotated or sessions were revoked."
+          runbook: docs/alert-policy.md#adminaccountchange

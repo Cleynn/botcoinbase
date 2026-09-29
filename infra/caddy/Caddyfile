@@ -49,12 +49,11 @@
 
 {$TD_GRAFANA_HOSTNAME} {
 	import common
-	@internal path /metrics*
+	@internal path /metrics* /api/health*
 	handle @internal {
 		respond 404
 	}
 	handle {
-		# PLACEHOLDER (Phase 1). Phase 3 replaces this with: reverse_proxy grafana:3000
-		respond "Grafana is not enabled in this build phase." 503
+		reverse_proxy grafana:3000
 	}
 }

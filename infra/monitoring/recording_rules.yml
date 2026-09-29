@@ -1,0 +1,29 @@
+# Recording rules. Pure aggregations of metrics that exist; nothing here acts on anything.
+groups:
+  - name: tradingdots_http
+    rules:
+      - record: tradingdots:http_requests:rate5m
+        expr: sum by (status_class) (rate(tradingdots_http_requests_total[5m]))
+      - record: tradingdots:http_requests_5xx:ratio5m
+        expr: (sum(rate(tradingdots_http_requests_total{status_class="5xx"}[5m])) or vector(0)) / sum(rate(tradingdots_http_requests_total[5m]))
+      - record: tradingdots:http_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(tradingdots_http_request_duration_seconds_bucket[5m])))
+
+  - name: tradingdots_security
+    rules:
+      - record: tradingdots:auth_events:increase15m
+        expr: sum by (event) (increase(tradingdots_auth_events_total[15m]))
+
+  - name: node
+    rules:
+      - record: node:cpu_utilisation:ratio5m
+        expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))
+      - record: node:memory_utilisation:ratio
+        expr: 1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+      - record: node:filesystem_utilisation:ratio
+        expr: 1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs"})
+
+  - name: prometheus
+    rules:
+      - record: prometheus:tsdb_usage:ratio
+        expr: (prometheus_tsdb_storage_blocks_bytes + prometheus_tsdb_wal_storage_size_bytes) / prometheus_tsdb_retention_limit_bytes

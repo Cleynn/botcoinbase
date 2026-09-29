@@ -3,9 +3,7 @@
 Deterministic, fee-aware Coinbase Advanced Trade **spot-grid research, backtest and paper-trading platform**.
 It is **not an AI trading bot**. **LIVE TRADING: BLOCKED** in every build produced from this repository.
 
-**Status: Phase 1 foundation only.** There is no exchange adapter, no orders, no pair management,
-no data import, no LLM packages/proposals and no bot controls. The dashboard is a static shell in which
-every measurement reads "Unknown" or "Not available".
+**Status: Phase 3 (monitoring).** Prometheus, Grafana and node-exporter run alongside the app (read-only, internal, no alert delivery); see `docs/monitoring.md`. Phase 2 provides authentication and the security pages. Local-CLI ADMIN bootstrap, Argon2id, server-side sessions, CSRF, login throttling, audit log, Security and Audit pages. There is still no exchange adapter, no orders, no pair management, no data import, no LLM packages/proposals and no bot controls. Every unmeasured value reads "Unknown" or "Not available".
 
 Stack: Python 3.12, FastAPI, server-rendered Jinja2, vendored HTMX, PostgreSQL, Redis, Caddy.
 No React/Node/npm/CDN/frontend build chain. Governing documents: `baseline/TRADINGDOTS_HANDOFF.md`
@@ -19,6 +17,8 @@ make lint typecheck test      # all must pass
 make verify-security-config-example
 ```
 
+Tests need PostgreSQL: they start a private one via `pgserver` (dev dependency), or set `TD_TEST_PG_URI` to a superuser URI.
+
 ## Deploy prerequisites (NOT done or verified by this repository)
 DNS records, TLS issuance, host firewall, SSH hardening. See `docs/operational-runbook.md`.
 
@@ -26,10 +26,11 @@ DNS records, TLS issuance, host firewall, SSH hardening. See `docs/operational-r
 ./scripts/bootstrap.sh        # creates .env (mode 600) with random secrets; prints none
 make verify-security-config   # strict: fails on placeholders, debug, insecure cookies, published ports
 make up && make health
+docker compose run --rm -it ctl python scripts/create_admin.py   # first ADMIN, interactive only
 ```
 
 ## Make targets
-`format lint typecheck test up down logs health verify-security-config` (plus `verify-security-config-example`).
+`format lint typecheck test up down logs health verify-security-config verify-monitoring-config monitoring-status` (plus `verify-security-config-example`).
 
 ## Layout
 `app/` application, `config/` YAML profiles, `infra/` Caddy and Postgres init, `scripts/` health,

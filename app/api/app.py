@@ -1,47 +1,33 @@
-"""FastAPI application factory: server-rendered Jinja2 + HTMX shell. No data, no controls."""
+"""FastAPI application factory: server-rendered Jinja2 + HTMX, authenticated, default deny."""
 
 from __future__ import annotations
 
+import ipaddress
 import logging
-from datetime import UTC, datetime
-from pathlib import Path
+import time
 from typing import Any
+from uuid import uuid4
 
-import jinja2
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import constants
-from app.api.health import router as health_router
-from app.config import Settings, load_settings
+from app.api import admin, auth, dashboard, health
+from app.api.dependencies import Services, access_guard, csrf_guard
+from app.api.errors import BodySizeLimitMiddleware, register_error_handlers
+from app.auth.audit import AuditWriter
+from app.auth.password import PasswordService
+from app.auth.rate_limit import LoginRateLimiter
+from app.auth.session import AuthService, derive_key
+from app.config import ConfigError, Settings, load_settings
+from app.domain.models import Clock, SystemClock
+from app.monitoring.collectors import build_monitoring
+from app.storage.database import Storage
+from app.web.view_models import WEB_DIR, Renderer
 
 logger = logging.getLogger("app")
-
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-
-NAV_ITEMS = ("Bot", "Pairs", "Reports", "LLM Review", "Audit", "Security")
-
-# Every value is "Unknown" or "Not available": Phase 1 has no bot, exchange or data source.
-UNAVAILABLE_TILES: tuple[tuple[str, str], ...] = (
-    ("Bot state", "Unknown"),
-    ("Active pair", "Not available"),
-    ("Protected reserve", "Not available"),
-    ("Deployed capital", "Not available"),
-    ("Deployment cap", "Not available"),
-    ("Grid status", "Not available"),
-    ("Data freshness", "Not available"),
-    ("Product metadata freshness", "Not available"),
-    ("Reconciliation status", "Unknown"),
-    ("Circuit breaker state", "Unknown"),
-    ("Kill switch state", "Unknown"),
-    ("Recent risk decisions", "Not available"),
-    ("Alerts", "Not available"),
-    ("Latest reports", "Not available"),
-    ("LLM Review Package state", "Not available"),
-)
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
@@ -51,41 +37,64 @@ SECURITY_HEADERS = {
     ),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
+    # NOT "no-referrer": with that policy browsers serialise the Origin of same-origin POSTs as
+    # "null", which the CSRF check must (and does) reject. "same-origin" leaks nothing to other
+    # sites while keeping a real Origin on our own form submissions.
+    "Referrer-Policy": "same-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
 }
 
-_STATUS_PARTIAL = '{% from "base.html" import status_tile %}{{ status_tile(now) }}'
 
-
-def _build_environment(settings: Settings) -> jinja2.Environment:
-    env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(WEB_DIR / "templates"),
-        autoescape=True,
-        undefined=jinja2.StrictUndefined,
+def build_services(settings: Settings, storage: Storage, clock: Clock) -> Services:
+    secret = settings.secret_key
+    if secret is None or len(secret.get_secret_value()) < constants.MIN_SECRET_LENGTH:
+        raise ConfigError(
+            f"TD_SECRET_KEY is required (at least {constants.MIN_SECRET_LENGTH} characters)"
+        )
+    if settings.cookie is None:
+        raise ConfigError("cookie settings are required")
+    csrf_key = derive_key(secret, "csrf")
+    limiter = LoginRateLimiter(settings.auth, derive_key(secret, "identity"))
+    audit = AuditWriter(clock)
+    auth_service = AuthService(
+        storage=storage,
+        settings=settings.auth,
+        clock=clock,
+        passwords=PasswordService.create(settings.auth),
+        limiter=limiter,
+        audit=audit,
+        csrf_key=csrf_key,
     )
-    env.globals.update(
-        app_name=constants.APP_NAME,
-        mode=settings.mode,
-        live_status=constants.LIVE_TRADING_STATUS,
-        nav_items=NAV_ITEMS,
-        grafana_url=f"https://{settings.grafana_hostname}/" if settings.grafana_hostname else None,
+    return Services(
+        settings=settings,
+        storage=storage,
+        clock=clock,
+        auth=auth_service,
+        audit=audit,
+        limiter=limiter,
+        csrf_key=csrf_key,
+        renderer=Renderer(settings),
+        cookie=settings.cookie,
+        trusted_networks=tuple(
+            ipaddress.ip_network(n, strict=False) for n in settings.trusted_proxies
+        ),
     )
-    return env
 
 
-def _dashboard_context() -> dict[str, Any]:
-    return {"tiles": UNAVAILABLE_TILES, "now": datetime.now(UTC)}
-
-
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    storage: Storage | None = None,
+    clock: Clock | None = None,
+) -> FastAPI:
     settings = settings or load_settings()
-    env = _build_environment(settings)
-
-    def render(template: str, status_code: int = 200, **context: Any) -> HTMLResponse:
-        return HTMLResponse(env.get_template(template).render(**context), status_code=status_code)
+    storage = storage or Storage(settings.database)
+    storage.check_schema()  # refuse to start against an older or newer schema
+    clock = clock or SystemClock()
+    services = build_services(settings, storage, clock)
+    monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
 
     app = FastAPI(
         title=constants.APP_NAME,
@@ -93,53 +102,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        # Registered app-wide: no route can opt out of default-deny or CSRF enforcement.
+        dependencies=[Depends(access_guard), Depends(csrf_guard)],
     )
-    app.state.settings = settings
+    app.state.services = services
+    app.state.monitoring = monitoring  # metrics are served by a separate internal listener
+    register_error_handlers(app)
 
     allowed_hosts = ["localhost", "127.0.0.1"]
     if settings.app_hostname:
         allowed_hosts.append(settings.app_hostname)
     if settings.environment == "test":
         allowed_hosts.append("testserver")
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Any) -> Response:
-        response: Response = await call_next(request)
+        request.state.request_id = uuid4().hex
+        started = time.perf_counter()
+        status = 500
+        try:
+            response: Response = await call_next(request)
+            status = response.status_code
+        finally:
+            try:  # observing must never affect the response
+                template = getattr(request.scope.get("route"), "path", None)
+                monitoring.metrics.observe_request(template, status, time.perf_counter() - started)
+            except Exception:  # noqa: BLE001
+                logger.error("could not record request metrics")
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        response.headers["X-Request-ID"] = request.state.request_id
         if not request.url.path.startswith("/static/"):
             response.headers.setdefault("Cache-Control", "no-store")
+            response.headers.setdefault("Vary", "Cookie")
         return response
 
-    @app.exception_handler(StarletteHTTPException)
-    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
-        message = (
-            "Page not found." if exc.status_code == 404 else "The request could not be completed."
-        )
-        return render(
-            "error.html", exc.status_code, status_code_text=exc.status_code, message=message
-        )
-
-    @app.exception_handler(Exception)
-    async def unexpected_error(request: Request, exc: Exception) -> Response:
-        logger.error("unhandled application error", exc_info=exc)
-        return render("error.html", 500, status_code_text=500, message="Something went wrong.")
-
-    app.include_router(health_router)
+    app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(dashboard.router)
+    app.include_router(admin.router)
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
-
-    @app.get("/", response_class=HTMLResponse)
-    def dashboard() -> HTMLResponse:
-        return render("dashboard.html", **_dashboard_context())
-
-    @app.get("/login", response_class=HTMLResponse)
-    def login() -> HTMLResponse:
-        return render("login.html")
-
-    @app.get("/partials/status", response_class=HTMLResponse)
-    def status_partial() -> HTMLResponse:
-        html = env.from_string(_STATUS_PARTIAL).render(now=datetime.now(UTC))
-        return HTMLResponse(html)
-
     return app

@@ -1,10 +1,19 @@
-# Example (not loaded): Prometheus/Grafana placeholders. Phase 3 introduces real monitoring.
-prometheus:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-  retention_time: 30d
-  retention_size: 15GB
-grafana:
-  anonymous_access: false
-  self_registration: false
-  public_ports: none
+# Example (not loaded): the `monitoring:` block that may be added to config/base.yaml. Defaults are
+# shown; the bind address is normally set through TD_METRICS_BIND (docker-compose.yml sets it).
+#
+# The metrics listener is separate from the web port, is never routed by Caddy, and is never
+# published on the host. Production refuses a wildcard/public bind address and broad scraper networks.
+monitoring:
+  enabled: true
+  bind_address: 127.0.0.1          # compose: TD_METRICS_BIND=172.29.20.10 (app's address on mon_scrape)
+  port: 9464
+  allowed_scrapers:                # only these networks may fetch /metrics
+    - 127.0.0.1/32
+    - 172.29.20.0/24               # the mon_scrape network (Prometheus lives here)
+  cache_seconds: 10                # snapshot cache: scraping cannot hammer the database
+  chain_verify_interval_seconds: 300
+
+# Prometheus / Grafana settings live in infra/monitoring/ and docker-compose.yml, not here:
+#   scrape and evaluation interval : 15s
+#   retention                      : 30d and 15GB (Prometheus command-line flags)
+#   Grafana                        : login required; no anonymous access, sign-up, embedding or alerting

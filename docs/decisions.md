@@ -80,6 +80,45 @@ deviations are **prohibited** while no independent reviewer exists (SD-6).
   DNS/TLS/firewall, base-image digests.
 - review: SELF
 
+### DEC-009: Phase 2 implemented from the Phase 2 prompt (2026-09-29)
+- Scope: local ADMIN bootstrap, Argon2id, opaque server-side sessions, ADMIN/VIEWER, CSRF, login throttling, audit, reauthentication helper, authenticated dashboard/security/audit pages. Nothing that touches bot, exchange, pair or configuration state.
+- **Deviations from Baseline 2.0 (non-security-invariant, self-review):**
+  - The baseline's SQL-function privilege model (actor from `session_user`, DB-verified sessions and challenges, `td_fn` owner) is **not** implemented. Enforcement is application-level plus least-privilege grants (`td_app` cannot create users/change roles/alter audit rows; `td_ctl` cannot touch audit history or login attempts), CHECK constraints and append-only triggers. Residual risk RR-1 (a compromised web process can act as any signed-in user within its grants) is unchanged; it remains a live blocker.
+  - Time is the application clock (injectable), not `clock_timestamp()`.
+  - Migrations are plain SQL files run by `python -m app.storage.database` (no Alembic, so no `alembic.ini`); a schema guard refuses older and newer schemas; `*.down.sql` exists for development only.
+  - psycopg without a pool (one short-lived connection per transaction).
+  - Single-step reauthentication (confirm password, then act within 120 s, single use) instead of request/confirm challenge rows.
+  - Redis is still not used (sessions, throttling and audit live in PostgreSQL).
+- **Files beyond the Phase 2 allowed list** (needed to wire the feature; each minimal): `pyproject.toml`, `uv.lock` (argon2-cffi, psycopg, python-multipart; pgserver for tests), `app/config.py` (auth/database/cookie/trusted-proxy settings, production rules), `app/api/app.py`, `app/api/health.py`, `app/domain/__init__.py`, `app/storage/__init__.py`, `config/base.yaml`, `docker-compose.yml`, `Dockerfile`, `.env.example`, `scripts/verify_security_config.py`, `app/web/static/css/app.css`, `docs/architecture.md`, `docs/threat-model.md`, `app/storage/migrations/*.down.sql`, `tests/conftest.py`, `tests/integration/test_app_starts.py`, `tests/integration/test_storage_audit.py`, `tests/security/test_bootstrap_cli.py`, `tests/security/test_no_public_internal_ports.py`, `tests/security/test_no_secret_leakage.py`, `tests/unit/test_config.py`.
+- Two restricted database roles plus a one-shot `migrate` service: only `migrate` sees the owner password; the app gets `td_app`; the host CLI (`ctl`, profile `ops`) gets `td_ctl`.
+- Session cookies are browser-session cookies (no `Max-Age`); expiry is enforced server-side.
+- `Referrer-Policy: same-origin`, not `no-referrer` (found in a real browser: `no-referrer` makes browsers send `Origin: null` on same-origin form posts, which the CSRF check must refuse).
+- VIEWER provisioning has no allowed path yet (create_admin is ADMIN-only by requirement); tests create VIEWERs directly in the database.
+- review: SELF (non-security deviations). **No independent security review has been performed.**
+
+### DEC-010: Phase 2 verification record
+- Real output: ruff, mypy --strict (55 files), 444 tests against real PostgreSQL 16, Compose syntax, and 34/34 checks in real Chromium (login, cookie flags, cross-site CSRF attempt, rotation, logout/back, no-JS, 375 px, CSP console).
+- Not verified: container start and image build (no Docker daemon), `caddy validate`, Caddy forwarding, DNS/TLS/firewall, base-image digests.
+- review: SELF
+
+### DEC-011: Phase 3 monitoring (2026-09-29)
+- Implemented from the Phase 3 prompt: Prometheus, Grafana, node-exporter, optional cAdvisor, internal application metrics, recording and alert rules, Grafana provisioning and five dashboards, a monitoring summary on the main dashboard. No external alert transport and no monitoring-to-bot action exists.
+- **Metrics honesty (requirement 19):** only metrics with a real source are published (19 catalogued families plus `process_*`/`python_*`). The Master Contract's `tradingdots_bot_*` (except `tradingdots_bot_info`), `tradingdots_pair_*` and `tradingdots_llm_*` metrics are **reserved, not published**; tests enforce this in the catalogue, the live output, the rules and the dashboards. Consequently the Risk and Failsafes dashboard shows *security* failsafes, and Execution and Reconciliation contains only context and an explanation.
+- **No alerts for unbuilt components** (baseline used `absent_over_time` for subsystems; that would fire permanently now). They are listed as reserved in `docs/alert-policy.md`.
+- **Metrics are served by a separate internal listener** (private bind, allowed scrapers only), not by FastAPI, so the web port and Caddy can never expose them. A bind failure is reported on the dashboard and does not stop the web application. Baseline BI-27 ("web process has no background tasks") is relaxed by one daemon thread serving `/metrics`; it holds no credentials of its own and reads only the cached snapshot.
+- **The web tier never queries Prometheus** (baseline BI-27/CI-8). The dashboard summary is computed in-process from the same snapshot; the "Alerts" tile stays `Not available`. VIEWERs see no audit event counts or positions.
+- **Grafana:** own admin user `td-admin`; a required unique `GRAFANA_SECRET_KEY` (Grafana's built-in default key is public); alerting, metrics, plugins, sharing and update checks off; dashboards and the single credential-less datasource provisioned read-only. The optional Caddy second layer (baseline SD-2/B-8) is documented, not enabled.
+- **cAdvisor** is optional (profile `cadvisor`) and mounts neither the Docker socket nor `/var/lib/docker`; containers are identified by cgroup id. Untested here.
+- **node-exporter** runs non-root with read-only host mounts but without host networking, so its network metrics describe its own namespace (documented on the panel).
+- Static addresses: `172.29.20.0/24` for `mon_scrape` (app at `.10`), alongside `172.29.10.0/24` for `edge_app`. If they clash with a host network, change Compose and `monitoring.allowed_scrapers`/`trusted_proxies` together.
+- **Files beyond the Phase 3 allowed list** (each minimal): `app/config.py` (monitoring block, `TD_METRICS_BIND`, production rules), `app/storage/repositories.py` (a read-only `MonitoringRepository` for aggregate queries), `app/monitoring/` is new as listed, `.env.example` and `scripts/verify_security_config.py` (`GRAFANA_SECRET_KEY`), `pyproject.toml`/`uv.lock` (`prometheus-client`, dev `promql-parser`, `pgserver` earlier; version 0.3.0), `Makefile` (two targets), `docs/architecture.md`, `docs/threat-model.md`, `docs/decisions.md`, `README.md`, and tests: `tests/unit/test_config.py`, `tests/security/test_no_public_internal_ports.py`, `tests/security/test_no_secret_leakage.py`, `tests/security/test_authorization_boundaries.py`, plus new `tests/unit/test_metrics.py` etc. as listed.
+- review: SELF (non-security deviations). **No independent security review has been performed.**
+
+### DEC-012: Phase 3 verification record
+- Real tools: `promtool` 2.53.0 (config, rules, 7 rule unit tests) and a real Prometheus 2.53.0 scraping the real application (PostgreSQL 16) and node_exporter 1.8.1, evaluating all 28 rules and executing every dashboard query; behaviour of the disabled lifecycle/admin APIs confirmed against the real binary. Grafana could **not** be run (download host blocked).
+- Not verified: container start and health checks for the new services, Caddy proxying Grafana, Grafana first start and rendering, cAdvisor, resource estimates, host mounts on the VPS.
+- review: SELF
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

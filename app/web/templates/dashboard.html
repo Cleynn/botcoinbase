@@ -2,13 +2,21 @@
 {% from "base.html" import status_tile %}
 {% block content %}
 <h1>Overview</h1>
-<p class="notice">Phase 1 shell. No bot, exchange connection, pair management or data import exists yet, so every measurement below is unavailable.</p>
+<p class="notice">Read-only overview. Nothing on this page can change bot, exchange, pair or configuration state.</p>
+<h2>Known values</h2>
 <dl class="tiles">
-  <div class="tile"><dt>Bot mode</dt><dd>{{ mode }}</dd></div>
-  <div class="tile"><dt>Live trading</dt><dd>{{ live_status }}</dd></div>
-  {% for label, value in tiles %}
+  {% for label, value in view.known %}
   <div class="tile"><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
   {% endfor %}
+</dl>
+<h2>Not available yet</h2>
+<dl class="tiles">
+  {% for label, value in view.unavailable %}
+  <div class="tile"><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+  {% endfor %}
+  {% if grafana_url %}
+  <div class="tile"><dt>Grafana</dt><dd><a href="{{ grafana_url }}" rel="noopener noreferrer" target="_blank">Open Grafana (separate sign-in)</a></dd></div>
+  {% endif %}
 </dl>
 {{ status_tile(now) }}
 {% endblock %}
