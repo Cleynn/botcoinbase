@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import constants
-from app.api import admin, auth, dashboard, health, pairs, reports
+from app.api import admin, auth, dashboard, health, pairs, reports, review
 from app.api.dependencies import Services, access_guard, csrf_guard
 from app.api.errors import BodySizeLimitMiddleware, register_error_handlers
 from app.auth.audit import AuditWriter
@@ -26,6 +26,7 @@ from app.domain.models import Clock, SystemClock
 from app.monitoring.collectors import build_monitoring
 from app.pairs.service import PairService, RuntimeGate
 from app.paper.gate import PaperRuntimeGate
+from app.review.service import ReviewService
 from app.storage.database import Storage
 from app.web.pair_views import reason_text
 from app.web.view_models import WEB_DIR, Renderer
@@ -86,12 +87,21 @@ def build_services(
         consume_reauth=auth_service.consume_reauth,
         reauth_active=auth_service.reauth_is_fresh,
     )
+    review_service = ReviewService(
+        storage=storage,
+        clock=clock,
+        settings=settings,
+        audit=audit,
+        consume_reauth=auth_service.consume_reauth,
+        reauth_active=auth_service.reauth_is_fresh,
+    )
     return Services(
         settings=settings,
         storage=storage,
         clock=clock,
         auth=auth_service,
         pairs=pair_service,
+        review=review_service,
         audit=audit,
         limiter=limiter,
         csrf_key=csrf_key,
@@ -166,5 +176,6 @@ def create_app(
     app.include_router(admin.router)
     app.include_router(pairs.router)
     app.include_router(reports.router)
+    app.include_router(review.router)
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     return app

@@ -60,6 +60,11 @@ Metrics are read from a cached snapshot (`app/monitoring/health.py`, refreshed a
 | `tradingdots_paper_orders` | gauge | `state` | database | Local paper orders by state (PAPER only, never exchange orders). |
 | `tradingdots_paper_deployed_quote` | gauge | - | database | Paper deployment: open buy reserve plus inventory cost, in USDC (PAPER only). |
 | `tradingdots_paper_free_cash_quote` | gauge | - | database | Paper cash not reserved by open buys, in USDC (PAPER only). |
+| `tradingdots_review_enabled` | gauge | - | database | 1 if read-only review packages are enabled (disabled by default), else 0. |
+| `tradingdots_review_packages` | gauge | `state` | database | Review packages by state (counts only, never package content). |
+| `tradingdots_review_last_ready_timestamp_seconds` | gauge | - | database | When a review package was last built. |
+| `tradingdots_review_downloads_total` | counter | - | database | Audited review package downloads. |
+| `tradingdots_review_denied_total` | counter | - | database | Audited refusals of review package actions. |
 | `tradingdots_metrics_scrapes_total` | counter | - | listener | Scrapes served by the metrics listener. |
 | `tradingdots_metrics_last_scrape_timestamp_seconds` | gauge | - | listener | When the metrics listener last served a scrape. |
 | `tradingdots_collector_errors_total` | counter | `collector` | collector | Errors while collecting metrics, by collector. |

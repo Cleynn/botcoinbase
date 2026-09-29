@@ -46,3 +46,9 @@ strategy, a fee-aware backtest with walk-forward, and a local persisted paper ex
 `batch` service (`make market-import`, `market-snapshot`, `backtest`, `paper-*`). No private
 execution, no live mode. See `docs/backtest-and-paper.md`; example report (FICTIONAL, synthetic):
 `docs/examples/backtest-report-FICTIONAL.md`.
+
+## Review packages (Phase 6)
+An ADMIN can enable (disabled by default), request, verify and download a sanitized, historical,
+checksummed ZIP to give to an AI assistant by hand. It cannot trade or change any setting, no LLM is
+called, and no proposal is imported. Build/verify/cleanup run on the host (`make review-*`). See
+`docs/review-packages.md`; fictional package README: `docs/examples/review-package-README-FICTIONAL.md`.

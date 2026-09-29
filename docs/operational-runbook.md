@@ -88,3 +88,12 @@ By owner decision (DEC-006) neither is implemented or planned. Host loss means l
 5. Paper: activate the pair in the UI (needs `TD_MODE=PAPER`, paper session PAUSED), `paper start`, run `paper step` after each import, `paper stop` to pause (orders are cancelled, inventory is kept).
 6. A HALTED session needs a person: review, then `paper start --acknowledge-halt`.
 Snapshot files are read-only; back up the `datasets` volume with the database. Never edit a snapshot: a changed file is refused.
+
+## Phase 6: review packages (operator steps)
+1. As ADMIN open Review packages, choose retention days, confirm the password and type `ENABLE READ-ONLY REVIEW PACKAGES`.
+2. Request a package: pick the period (UTC dates, at most 90 days, not in the future) and scope, confirm the password, type `CREATE READ-ONLY REVIEW PACKAGE`. The request is recorded only.
+3. On the host: `make review-build`, then `make review-verify`. A FAILED package shows a fixed failure code (for example `SCANNER_HIT`: treat that as a sanitizer bug and report it, do not work around it).
+4. In the UI verify and download the ZIP (POST). Read `README.md`; give the AI assistant only the files you choose; its reply is advisory and is never imported.
+5. `make review-cleanup` (schedule it): expires packages past retention, removes their files, removes orphans. Everything is audited.
+6. To stop: disable the feature (ADMIN, `DISABLE READ-ONLY REVIEW PACKAGES`). Downloads and requests stop at once.
+If a package turns CORRUPT, do not use it; request a new one and investigate the volume.

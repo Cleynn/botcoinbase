@@ -41,6 +41,7 @@ _ENV_FIELDS = {
     "TD_METRICS_BIND": "monitoring.bind_address",
     "TD_EGRESS_PROXY": "exchange.egress_proxy",
     "TD_DATA_DIR": "data.data_dir",
+    "TD_REVIEW_DIR": "review.dir",
 }
 # Accepted but not mapped onto Settings (used by profile selection, the migrate command and
 # environment-file validation).
@@ -381,6 +382,28 @@ class DataSettings(BaseModel):
         return value
 
 
+class ReviewSettings(BaseModel):
+    """Where review packages live and their fixed limits. The feature itself is a database flag,
+    DISABLED by default, changed only by the ADMIN confirmation chain."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    dir: str = "/review"
+    max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
+    max_rows_per_file: int = Field(default=20000, ge=100, le=200000)
+    max_period_days: int = Field(default=90, ge=1, le=90)
+
+    @field_validator("dir")
+    @classmethod
+    def _dir(cls, value: str) -> str:
+        parts = value.split("/")
+        if not re.fullmatch(r"/[A-Za-z0-9_./-]{1,200}", value) or ".." in parts:
+            raise ValueError("review dir must be an absolute path without '..'")
+        if {"static", "web", "public", "templates"} & set(parts) or value.startswith("/app"):
+            raise ValueError("review dir must be outside the web root and application code")
+        return value
+
+
 class PairPolicy(BaseModel):
     """Static pair/capital policy. Values may only tighten the hard ceilings in app.constants."""
 
@@ -446,6 +469,7 @@ class Settings(BaseModel):
     monitoring: MonitoringSettings = MonitoringSettings()
     exchange: ExchangeSettings = ExchangeSettings()
     data: DataSettings = DataSettings()
+    review: ReviewSettings = ReviewSettings()
     pair_policy: PairPolicy
 
     @field_validator("trusted_proxies")

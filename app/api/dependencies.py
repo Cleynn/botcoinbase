@@ -37,6 +37,7 @@ from app.domain.enums import AuditEventType, AuditResult
 from app.domain.models import AuthContext, ClientIdentity, Clock
 from app.domain.permissions import Permission
 from app.pairs.service import PairService
+from app.review.service import ReviewService
 from app.storage.database import Storage
 from app.web.view_models import Renderer
 
@@ -53,6 +54,7 @@ class Services:
     clock: Clock
     auth: AuthService
     pairs: PairService
+    review: ReviewService
     audit: AuditWriter
     limiter: LoginRateLimiter
     csrf_key: bytes

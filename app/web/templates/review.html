@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Review packages</h1>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice"><strong>{{ view.cannot_trade }}</strong></p>
+
+<section aria-labelledby="st-h">
+  <h2 id="st-h">Feature</h2>
+  <p>Status: <strong>{{ "ENABLED" if view.enabled else "DISABLED" }}</strong> · retention {{ view.retention_days }} days · changed {{ view.updated }}</p>
+  {% if view.enabled %}
+  <p><a href="/review/disable/request">Disable review packages…</a></p>
+  {% else %}
+  <form method="get" action="/review/enable/request" class="stacked">
+    <p><label for="retention_days">Keep packages for (days, 1 to 90)</label>
+       <input id="retention_days" name="retention_days" type="number" min="1" max="90" value="14" required></p>
+    <p><button type="submit">Enable review packages…</button></p>
+  </form>
+  {% endif %}
+</section>
+
+{% if view.enabled %}
+<section aria-labelledby="new-h">
+  <h2 id="new-h">Request a package</h2>
+  {% if view.blockers %}
+  <p>Unavailable right now:</p>
+  <ul>{% for code in view.blockers %}<li><code>{{ code }}</code></li>{% endfor %}</ul>
+  {% else %}
+  <form method="get" action="/review/packages/create/request" class="stacked">
+    <p><label for="period_start">Period start (UTC date)</label> <input id="period_start" name="period_start" type="date" required></p>
+    <p><label for="period_end">Period end (UTC date)</label> <input id="period_end" name="period_end" type="date" required></p>
+    <fieldset><legend>Scope</legend>
+      {% for key, label in view.scopes %}
+      <p><label><input type="checkbox" name="scope" value="{{ key }}"> {{ label }}</label></p>
+      {% endfor %}
+    </fieldset>
+    <p><button type="submit">Continue…</button></p>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+<section aria-labelledby="pk-h">
+  <h2 id="pk-h">Packages</h2>
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Review packages, newest first</caption>
+      <thead><tr><th scope="col">Package</th><th scope="col">State</th><th scope="col">Period</th><th scope="col">Requested</th><th scope="col">Expires</th><th scope="col">Size</th></tr></thead>
+      <tbody>
+      {% for p in view.packages %}
+        <tr>
+          <td><a href="/review/packages/{{ p.id }}"><code>{{ p.id[:8] }}</code></a></td>
+          <td><span class="badge">{{ p.state }}</span></td>
+          <td>{{ p.period }}</td>
+          <td>{{ p.requested }}</td>
+          <td>{{ p.expires }}</td>
+          <td>{{ p.size }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No packages yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p>Packages are built on the host: <code>review build</code>, verified with <code>review verify</code>, and removed after retention by <code>review cleanup</code>.</p>
+</section>
+{% endblock %}

@@ -26,6 +26,7 @@ ADMIN_ONLY = {
     Permission.REVOKE_USER_SESSIONS,
     Permission.VIEW_AUDIT,
     Permission.MANAGE_PAIRS,
+    Permission.MANAGE_REVIEW_PACKAGES,
 }
 
 

@@ -5,9 +5,9 @@ Update this file at the end of every phase or session. Master Contract and `docs
 ## Project state
 - Repository: `cleynn/botcoinbase`
 - Branch: `claude/epic-carson-18byfr`
-- Phase 5 (market data, backtest, paper) committed on top of Phase 4 (pairs), on top of `eef7311` (Phase 3), `7091205` (Phase 2), `09c9d9c` (Phase 1); see `git log`
+- Phase 6 (read-only review packages) committed on top of Phase 5 (market data, backtest, paper), Phase 4 (pairs), on top of `eef7311` (Phase 3), `7091205` (Phase 2), `09c9d9c` (Phase 1); see `git log`
 - Tag `td-3.1`: local only; the tag push fails ("remote hung up"), do not retry without a policy change
-- Package version: 0.4.0 (not bumped in Phase 5); schema version 3 (migration `0003_market.sql`)
+- Package version: 0.4.0 (not bumped in Phases 5 and 6); schema version 4 (migration `0004_review.sql`)
 - Mode: BACKTEST only
 - Live trading: BLOCKED
 - Gate: PAPER ONLY. Not approved for the next phase.
@@ -32,7 +32,10 @@ Update this file at the end of every phase or session. Master Contract and `docs
 
 - Phase 5: candles/importer/validation, checksummed Parquet snapshots, deterministic grid strategy, fee-aware backtest + walk-forward, shared trader, local persisted paper exchange, immutable JSON/Markdown reports, Reports pages, read-only metrics, `batch` service and `make market-*`/`backtest`/`paper-*`. See `docs/backtest-and-paper.md`, DEC-015/016. Example report (FICTIONAL): `docs/examples/`.
 
+- Phase 6: disabled-by-default review packages: ADMIN-only enable/disable/create chain (CSRF + fresh reauth + exact phrases), typed export views + scanner, deterministic ZIP builder/verifier, protected POST download, retention cleanup, dashboard, audit events, aggregate metrics, `review build|verify|cleanup|list` and `make review-*`. No LLM call, no proposal import, no bot mutation. See `docs/review-packages.md`, DEC-017/018; fictional README: `docs/examples/review-package-README-FICTIONAL.md`.
+
 ## Verified
+- Phase 6: 1603 tests passed (0 skipped); real-process + browser check 25/25 on SYNTHETIC data; byte fuzzing of packages; migration 0004 rollback verified.
 - Phase 5: 1400 tests passed (0 skipped); real-process + browser check 16/16 on SYNTHETIC data; migration 0003 rollback verified.
 - Phase 4: 1200 tests passed (0 skipped), real-browser check 12/12 against SYNTHETIC Coinbase data.
 - `ruff format`, `ruff check`, `mypy app scripts`: clean.
@@ -41,6 +44,7 @@ Update this file at the end of every phase or session. Master Contract and `docs
 - `make verify-security-config` and `make verify-monitoring-config` pass with a generated `.env` (deleted afterwards).
 
 ## Not yet verified
+- Phase 6: `batch`/`app` sharing the `review_packages` volume in real containers (no Docker daemon). No package delete action, no proposal import (baseline Phase 8), no signature or per-package encryption.
 - Phase 5: real Coinbase candle shapes (AS-C1), Docker start of `batch`, `/data` volume permissions, `docker compose config`. Strategy and fee model are assumptions; no result predicts real performance.
 - Phase 4: real Coinbase response shapes (AS-C1; fixtures are synthetic), Docker start of `egress-proxy`/`pairs`, proxy vs the live host.
 - No Docker daemon was available: container start and health, Caddy proxying Grafana, node-exporter host mounts, cAdvisor and resource sizing are untested.
@@ -52,7 +56,7 @@ Update this file at the end of every phase or session. Master Contract and `docs
 - The `td-3.1` tag push is blocked by the remote.
 
 ## Next task
-- Await the user's next phase prompt (Phase 5 gate: PAPER ONLY, LIVE TRADING BLOCKED). Do not start bot components without one.
+- Await the user's next phase prompt (Phase 6 gate: PAPER ONLY, LIVE TRADING BLOCKED). Do not start bot components without one.
 - Before any phase that builds bot components, decide the DEC-000 acknowledgement.
 - When a bot component is built, publish its metrics from the Master Contract list only. `tradingdots_bot_*` (except `bot_info`), `pair_*` and `llm_*` are reserved and currently not published; `tests/security/test_metrics_secret_redaction.py` will need a deliberate update.
 

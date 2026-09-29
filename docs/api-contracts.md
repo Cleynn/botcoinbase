@@ -71,3 +71,22 @@ All routes are GET, read-only, permission `view_reports` (ADMIN and VIEWER). No 
 The overview gains read-only market rows (latest report, data freshness) marked BACKTEST/PAPER.
 Audit events added: `market.ingested`, `market.snapshot_created`, `backtest.completed`, `report.created`,
 `paper.started`, `paper.stopped`, `paper.stepped`. Details: `docs/backtest-and-paper.md`.
+
+## Review packages (Phase 6)
+All routes need permission `manage_review_packages` (ADMIN only; VIEWER gets 403, audited as `authz.denied`). The feature is DISABLED by default. Details: `docs/review-packages.md`.
+
+| Method | Path | Effect | Errors |
+|---|---|---|---|
+| GET | `/review` | 200 status, request form (when enabled), package list | |
+| GET | `/review/enable/request?retention_days=N` | 200 confirmation page (no write) | 422 |
+| POST | `/review/enable/reauth` | `csrf_token, retention_days, password`; 303 back to the request page | 400, 429 |
+| POST | `/review/enable/confirm` | `csrf_token, retention_days, confirmation` (`ENABLE READ-ONLY REVIEW PACKAGES`); 303 `/review?msg=review_enabled` | 400 (phrase, reauth), 409 |
+| GET/POST | `/review/disable/request`, `/reauth`, `/confirm` | same chain, phrase `DISABLE READ-ONLY REVIEW PACKAGES` | 400, 409 |
+| GET | `/review/packages/create/request?period_start&period_end&scope=..` | 200 confirmation page (no write) | 400, 422 |
+| POST | `/review/packages/create/reauth` | fields + `password` | 400, 429 |
+| POST | `/review/packages/create/confirm` | fields + `confirmation` (`CREATE READ-ONLY REVIEW PACKAGE`); 303 `/review/packages/{id}?msg=review_requested` | 400, 409, 429 (limits) |
+| GET | `/review/packages/{id}` | 200 metadata only (never package content) | 404 |
+| POST | `/review/packages/{id}/verify` | `csrf_token`; 303 with result | 404, 409 |
+| POST | `/review/packages/{id}/download` | `csrf_token`; 200 `application/octet-stream` attachment, `nosniff`, `no-store`, sandbox CSP; verified first | 404, 409 (not READY, disabled, corrupt) |
+
+There is no GET download, no static route and no DELETE. Audit events added: `review.enabled`, `review.disabled`, `review.requested`, `review.generating`, `review.ready`, `review.failed`, `review.corrupt`, `review.expired`, `review.verified`, `review.downloaded`, `review.cleanup`, `review.denied`.

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from app.storage.market_repositories import MarketRepository, ResultRepository
     from app.storage.pair_repositories import PairRepository, ProductRepository
     from app.storage.paper_repositories import PaperRepository
+    from app.storage.review_repositories import ExportRepository, ReviewRepository
 
 GENESIS_HASH = "0" * 64
 MAX_DETAIL_BYTES = 4096
@@ -409,12 +410,15 @@ class Repos:
     market: MarketRepository
     results: ResultRepository
     paper: PaperRepository
+    review: ReviewRepository
+    export: ExportRepository
 
     @classmethod
     def bind(cls, conn: Conn) -> Repos:
         from app.storage.market_repositories import MarketRepository, ResultRepository
         from app.storage.pair_repositories import PairRepository, ProductRepository
         from app.storage.paper_repositories import PaperRepository
+        from app.storage.review_repositories import ExportRepository, ReviewRepository
 
         return cls(
             UserRepository(conn),
@@ -427,4 +431,6 @@ class Repos:
             MarketRepository(conn),
             ResultRepository(conn),
             PaperRepository(conn),
+            ReviewRepository(conn),
+            ExportRepository(conn),
         )

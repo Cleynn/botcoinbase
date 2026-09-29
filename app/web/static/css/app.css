@@ -79,3 +79,7 @@ pre.report { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--p
 /* Report text is preformatted; it wraps and scrolls inside its own box, never the page. */
 pre.report { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; }
 .notice code { overflow-wrap: anywhere; }
+
+/* Long digests and ids wrap inside their cell instead of widening the page. */
+dd, dt { overflow-wrap: anywhere; }
+dd code, td code { overflow-wrap: anywhere; word-break: break-all; }

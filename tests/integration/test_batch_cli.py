@@ -92,10 +92,15 @@ def test_paper_status_and_report_work_before_anything_runs(mkt: Market, db: Test
 
 def test_the_top_level_cli_routes_the_new_groups(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[list[str]] = []
-    monkeypatch.setattr("app.batch_cli.main", lambda argv: seen.append(list(argv)) or 0)
-    for group in ("market", "backtest", "paper"):
+
+    def record(argv: Any) -> int:
+        seen.append(list(argv))
+        return 0
+
+    monkeypatch.setattr("app.batch_cli.main", record)
+    for group in ("market", "backtest", "paper", "review"):
         assert cli_main([group, "x"]) == 0
-    assert [s[0] for s in seen] == ["market", "backtest", "paper"]
+    assert [s[0] for s in seen] == ["market", "backtest", "paper", "review"]
 
 
 def test_the_cli_has_no_order_or_live_command() -> None:

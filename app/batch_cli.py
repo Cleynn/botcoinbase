@@ -1,4 +1,4 @@
-"""Host CLI for market data, backtests and paper trading (`market`, `backtest`, `paper`).
+"""Host CLI for market data, backtests, paper trading and review packages.
 
 Runs as `td_ctl` from the `batch` container, never in the web process. Importing is a dry run unless
 `--commit` is given. Nothing here places an order anywhere: the only "exchange" is the local paper
@@ -22,6 +22,7 @@ from app.market.ingest import GRANULARITY, STEP, Importer
 from app.market.snapshots import SnapshotBuilder, SnapshotError
 from app.pairs.runner import RunnerError
 from app.paper.exchange import PaperError, PaperExchange
+from app.review.builder import ReviewBuilder
 from app.storage.database import SchemaError, Storage, StorageUnavailable
 
 HOST_ROLE = "td_ctl"
@@ -48,6 +49,15 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--snapshot", type=UUID, required=True)
     run.add_argument("--walk-forward", action="store_true")
     run.add_argument("--levels", type=int, default=None)
+
+    review = top.add_parser("review").add_subparsers(dest="command", required=True)
+    review.add_parser("build", help="build every requested review package")
+    verify = review.add_parser("verify", help="verify READY packages on disk")
+    which = verify.add_mutually_exclusive_group(required=True)
+    which.add_argument("--id", type=UUID)
+    which.add_argument("--all", action="store_true")
+    review.add_parser("cleanup", help="expire packages past retention and remove their files")
+    review.add_parser("list", help="list review packages")
 
     paper = top.add_parser("paper").add_subparsers(dest="command", required=True)
     paper.add_parser("status")
@@ -112,6 +122,8 @@ def _dispatch(
             f"report {report.id} {report.kind} sha256={report.sha256} {'created' if created else 'already existed'}"
         )
         return 0
+    if args.group == "review":
+        return _review(args, settings, storage, clock, out)
     exchange = PaperExchange(storage=storage, clock=clock, settings=settings)
     if args.command == "status":
         s = exchange.status()
@@ -141,6 +153,35 @@ def _dispatch(
         out(
             f"report {report.id} {report.kind} sha256={report.sha256} {'created' if created else 'already existed'}"
         )
+    return 0
+
+
+def _review(
+    args: argparse.Namespace,
+    settings: Settings,
+    storage: Storage,
+    clock: Clock,
+    out: Callable[[str], None],
+) -> int:
+    builder = ReviewBuilder(storage=storage, clock=clock, settings=settings)
+    if args.command == "build":
+        results = builder.build_pending()
+        for r in results:
+            out(f"package {r.package_id} {r.state}{' ' + r.code if r.code else ''}")
+        out(f"{len(results)} package(s) processed")
+        return 0 if all(r.state == "READY" for r in results) else 1
+    if args.command == "verify":
+        checked = builder.verify_all() if args.all else {args.id: builder.verify(args.id)}
+        for pid, problems in checked.items():
+            out(f"package {pid} {'OK' if not problems else 'CORRUPT ' + ','.join(problems)}")
+        return 0 if all(not p for p in checked.values()) else 1
+    if args.command == "cleanup":
+        c = builder.cleanup()
+        out(f"expired={c.expired} content_removed={c.removed} orphan_files_removed={c.orphans}")
+        return 0
+    with storage.tx() as repos:
+        for row in repos.review.recent(50):
+            out(f"{row.id} {row.state} {row.period_start}..{row.period_end} {','.join(row.scope)}")
     return 0
 
 

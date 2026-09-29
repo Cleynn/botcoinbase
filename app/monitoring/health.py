@@ -37,6 +37,9 @@ class MarketFacts:
     paper_orders: dict[str, int]
     paper_deployed: Decimal
     paper_free_cash: Decimal
+    review_enabled: bool
+    review_counts: dict[str, int]
+    review_last_ready: datetime | None
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,9 @@ def _market_facts(repos: Repos) -> MarketFacts:
         paper_orders=repos.paper.counts(),
         paper_deployed=reserved + cost,
         paper_free_cash=cash - reserved,
+        review_enabled=repos.review.settings().enabled,
+        review_counts=repos.review.counts(),
+        review_last_ready=repos.review.last_ready(),
     )
 
 

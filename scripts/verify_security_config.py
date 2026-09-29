@@ -145,6 +145,25 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
             "batch",
         }:
             problems.append(f"service '{name}' must not join egress_int")
+    problems += _check_review_volume(services)
+    return problems
+
+
+def _check_review_volume(services: dict[str, Any]) -> list[str]:
+    """Review packages: only `batch` may write the volume; `app` may only read it."""
+    problems: list[str] = []
+    for name, svc in services.items():
+        for volume in svc.get("volumes") or []:
+            text = str(volume)
+            if not text.startswith("review_packages:"):
+                continue
+            read_only = text.endswith(":ro")
+            if name == "batch" and read_only:
+                problems.append("batch must mount review_packages read-write")
+            elif name == "app" and not read_only:
+                problems.append("app must mount review_packages read-only")
+            elif name not in ("app", "batch"):
+                problems.append(f"service '{name}' must not mount review_packages")
     return problems
 
 

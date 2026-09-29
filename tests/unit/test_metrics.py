@@ -79,6 +79,11 @@ EXPECTED = {
     "tradingdots_paper_orders",
     "tradingdots_paper_deployed_quote",
     "tradingdots_paper_free_cash_quote",
+    "tradingdots_review_enabled",
+    "tradingdots_review_packages",
+    "tradingdots_review_last_ready_timestamp_seconds",
+    "tradingdots_review_downloads_total",
+    "tradingdots_review_denied_total",
 }
 # Contract names that Phase 4 now publishes because a real source exists.
 PUBLISHED_CONTRACT = {"tradingdots_pair_candidates_total", "tradingdots_pair_state_total"}

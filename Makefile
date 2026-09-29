@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report
+.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list
 
 format:
 	uv run ruff check --fix .
@@ -81,3 +81,17 @@ paper-step:
 
 paper-report:
 	docker compose --profile discovery run --rm batch paper report
+
+# Phase 6: read-only review packages (built and verified on the host; enabling, requesting and
+# downloading are ADMIN web actions). Nothing here calls an LLM or changes bot state.
+review-build:
+	docker compose --profile discovery run --rm batch review build
+
+review-verify:
+	docker compose --profile discovery run --rm batch review verify --all
+
+review-cleanup:
+	docker compose --profile discovery run --rm batch review cleanup
+
+review-list:
+	docker compose --profile discovery run --rm batch review list
