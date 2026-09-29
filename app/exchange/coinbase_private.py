@@ -27,6 +27,7 @@ from urllib.parse import quote
 import httpx
 
 from app.adapters.coinbase_parse import ParseError
+from app.adapters.ratelimit import RateLimiter
 from app.config import ExchangeSettings
 from app.exchange.errors import ExchangeError, NoCredentials
 from app.exchange.models import (
@@ -90,8 +91,6 @@ class CoinbasePrivateReader:
         sleep: Callable[[float], None] = time.sleep,
         requests_per_second: int = 10,
     ) -> None:
-        from app.adapters.coinbase_public import RateLimiter
-
         self._signer = signer
         self._max_bytes = settings.max_response_bytes
         self._monotonic = monotonic
