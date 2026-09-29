@@ -1,0 +1,48 @@
+{% macro status_tile(now) -%}
+<section id="live-status" class="tile" aria-live="polite"
+         hx-get="/partials/status" hx-trigger="every 30s" hx-swap="outerHTML">
+  <h2>Server status</h2>
+  <p>Server time: <time datetime="{{ now.isoformat() }}">{{ now.strftime("%Y-%m-%d %H:%M:%S") }} UTC</time></p>
+  <p>Data sources: none connected (Phase 1 shell)</p>
+</section>
+{%- endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="htmx-config" content='{"allowEval":false,"selfRequestsOnly":true,"historyCacheSize":0,"includeIndicatorStyles":false}'>
+  <title>{{ title|default("Overview") }} · {{ app_name }}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="safety-banner" role="region" aria-label="Safety status">
+    <strong>MODE: {{ mode }}</strong>
+    <strong>LIVE TRADING: {{ live_status }}</strong>
+  </div>
+  <header class="site-header">
+    <p class="brand">{{ app_name }}</p>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/" {% if active|default("overview") == "overview" %}aria-current="page"{% endif %}>Overview</a></li>
+        {% for item in nav_items %}
+        <li><span class="nav-later" aria-disabled="true">{{ item }} <small>(not available yet)</small></span></li>
+        {% endfor %}
+        {% if grafana_url %}
+        <li><a href="{{ grafana_url }}" rel="noopener noreferrer" target="_blank">Grafana<span class="visually-hidden"> (opens in a new tab)</span></a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </header>
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <p>Times are UTC. Values shown as "Unknown" or "Not available" are never estimated.</p>
+  </footer>
+  <script src="/static/js/htmx.min.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
+</body>
+</html>

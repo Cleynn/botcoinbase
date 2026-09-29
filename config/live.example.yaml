@@ -1,0 +1,4 @@
+# LIVE TRADING IS BLOCKED.
+# This file is documentation only. It is never loaded: TD_PROFILE accepts only "backtest" and
+# "paper", and the application cannot represent a LIVE mode. Any attempt to add one is rejected
+# at load time. Enabling live trading needs a separate, evidence-based, human-approved release.

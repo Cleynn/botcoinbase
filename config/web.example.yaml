@@ -1,0 +1,7 @@
+# Example (not loaded): web-facing settings expected by the production validator.
+# Hostnames are supplied through TD_APP_HOSTNAME / TD_GRAFANA_HOSTNAME in .env.
+cookie:
+  secure: true      # required in production
+  httponly: true    # required in production
+  samesite: strict  # required in production
+  path: /           # required in production

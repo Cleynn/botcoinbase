@@ -1,0 +1,49 @@
+[project]
+name = "tradingdots"
+version = "0.1.0"
+description = "TradingDots Phase 1 foundation: deterministic spot-grid research platform shell (BACKTEST/PAPER only, LIVE blocked)."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "jinja2>=3.1,<4",
+    "pydantic>=2.7,<3",
+    "pyyaml>=6,<7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "httpx>=0.27,<1",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["tests/pending"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+"scripts/**" = ["T201"]
+"app/cli.py" = ["T201"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["app", "scripts", "tests"]
+exclude = ["tests/pending/"]
+plugins = ["pydantic.mypy"]

@@ -2,6 +2,7 @@
 
 Phase 1.0 FAILING SKELETON (baseline 5.5, 5.9). Replace with real tests before the code exists.
 """
+
 import pytest
 
 

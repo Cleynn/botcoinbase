@@ -1,0 +1,35 @@
+:root {
+  --bg: #ffffff; --fg: #111827; --muted: #4b5563; --panel: #f3f4f6; --border: #d1d5db;
+  --banner-bg: #111827; --banner-fg: #ffffff; --accent: #1d4ed8; --focus: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1220; --fg: #f3f4f6; --muted: #cbd5e1; --panel: #16213a; --border: #334155;
+    --banner-bg: #000000; --accent: #93c5fd; --focus: #fbbf24;
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.5 system-ui, sans-serif; }
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.skip-link { position: absolute; left: -999px; top: 0; background: var(--bg); padding: .5rem 1rem; }
+.skip-link:focus { left: 0; z-index: 10; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.safety-banner { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; padding: .5rem 1rem;
+  background: var(--banner-bg); color: var(--banner-fg); font-family: ui-monospace, monospace;
+  position: sticky; top: 0; z-index: 5; }
+.site-header, main, .site-footer { padding: .75rem 1rem; max-width: 72rem; margin: 0 auto; }
+.brand { font-weight: 700; margin: 0 0 .25rem; }
+nav ul { display: flex; flex-wrap: wrap; gap: .25rem .75rem; list-style: none; margin: 0; padding: 0; }
+nav a, .nav-later { display: inline-block; padding: .5rem .25rem; min-height: 2.75rem; }
+.nav-later { color: var(--muted); }
+[aria-current="page"] { font-weight: 700; text-decoration: none; }
+.notice { background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; padding: .75rem 1rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; margin: 1rem 0; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; padding: .75rem 1rem; margin: 0; }
+.tile dt { color: var(--muted); font-size: .875rem; }
+.tile dd { margin: 0; font-weight: 600; }
+.tile h2 { margin: 0 0 .25rem; font-size: 1rem; }
+.site-footer { color: var(--muted); font-size: .875rem; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

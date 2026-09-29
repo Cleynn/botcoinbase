@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "base.html" import status_tile %}
+{% block content %}
+<h1>Overview</h1>
+<p class="notice">Phase 1 shell. No bot, exchange connection, pair management or data import exists yet, so every measurement below is unavailable.</p>
+<dl class="tiles">
+  <div class="tile"><dt>Bot mode</dt><dd>{{ mode }}</dd></div>
+  <div class="tile"><dt>Live trading</dt><dd>{{ live_status }}</dd></div>
+  {% for label, value in tiles %}
+  <div class="tile"><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+  {% endfor %}
+</dl>
+{{ status_tile(now) }}
+{% endblock %}

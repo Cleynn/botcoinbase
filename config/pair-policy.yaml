@@ -1,0 +1,10 @@
+# Static policy ceilings (USDC). Values may only tighten app/constants.py. Strings, never floats.
+quote_currencies: [USDC]
+watchlist: [BTC-USDC, ETH-USDC, SOL-USDC]
+total_capital: "50"
+min_reserve: "15"
+max_deployment: "35"
+grid_levels: 3
+max_active_pairs: 1
+regridding_enabled: false
+capital_growth_enabled: false

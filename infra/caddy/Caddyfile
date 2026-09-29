@@ -1,0 +1,60 @@
+# Caddy is the only public service (TCP 80/443). Hostnames come from the environment.
+# UNVERIFIED: not run through `caddy validate` in the authoring environment (no Caddy binary).
+{
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=300"
+		-Server
+	}
+	request_body {
+		max_size 1MB
+	}
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>headers>Authorization delete
+			request>headers>Cookie delete
+			request>headers>Proxy-Authorization delete
+			resp_headers>Set-Cookie delete
+			request>remote_ip ip_mask {
+				ipv4 24
+				ipv6 48
+			}
+			request>client_ip ip_mask {
+				ipv4 24
+				ipv6 48
+			}
+		}
+	}
+}
+
+{$TD_APP_HOSTNAME} {
+	import common
+	@internal path /healthz* /metrics* /internal/* /docs* /redoc* /openapi.json
+	handle @internal {
+		respond 404
+	}
+	handle {
+		reverse_proxy app:8000
+	}
+}
+
+{$TD_GRAFANA_HOSTNAME} {
+	import common
+	@internal path /metrics*
+	handle @internal {
+		respond 404
+	}
+	handle {
+		# PLACEHOLDER (Phase 1). Phase 3 replaces this with: reverse_proxy grafana:3000
+		respond "Grafana is not enabled in this build phase." 503
+	}
+}

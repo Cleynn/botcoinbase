@@ -2,11 +2,14 @@
 
 Phase 1.0 FAILING SKELETON (baseline 5.5, 5.9). Replace with real tests before the code exists.
 """
+
 import pytest
 
 
 def test_rejects_nan_infinity_exponent_and_excess_scale():
-    pytest.fail("NOT IMPLEMENTED (Phase 1.0 skeleton): NaN, Infinity, 1e3 forms and scale > 18 rejected")
+    pytest.fail(
+        "NOT IMPLEMENTED (Phase 1.0 skeleton): NaN, Infinity, 1e3 forms and scale > 18 rejected"
+    )
 
 
 def test_json_numbers_parse_with_decimal():
