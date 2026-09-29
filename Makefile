@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list proposal-validate proposal-cleanup proposal-list
+.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list proposal-validate proposal-cleanup proposal-list safety-status safety-recover safety-reconcile safety-monitor safety-commands
 
 format:
 	uv run ruff check --fix .
@@ -107,3 +107,21 @@ proposal-cleanup:
 
 proposal-list:
 	docker compose --profile discovery run --rm batch proposal list
+
+# Phase 8: safety machinery. Host commands only. Nothing here places, submits or sells an order, and
+# resuming the bot is an ADMIN dashboard action, not a command. Without an exchange reader (the state
+# of every deployment of this build) recover and reconcile report that and do nothing.
+safety-status:
+	docker compose --profile discovery run --rm batch safety status
+
+safety-recover:
+	docker compose --profile discovery run --rm batch safety recover
+
+safety-reconcile:
+	docker compose --profile discovery run --rm batch safety reconcile
+
+safety-monitor:
+	docker compose --profile discovery run --rm batch safety monitor
+
+safety-commands:
+	docker compose --profile discovery run --rm batch safety commands

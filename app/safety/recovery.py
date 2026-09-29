@@ -33,7 +33,12 @@ class RecoveryResult:
 
 class RecoveryService:
     def __init__(
-        self, *, storage: Storage, clock: Clock, settings: Settings, reconciler: Reconciler
+        self,
+        *,
+        storage: Storage,
+        clock: Clock,
+        settings: Settings,
+        reconciler: Reconciler | None,
     ) -> None:
         self._storage, self._clock, self._settings = storage, clock, settings
         self._reconciler = reconciler
@@ -88,8 +93,10 @@ class RecoveryService:
                 "RECOVERY_START",
                 {"not_sent": closed, "unknown": unknown},
             )
-        run = self._reconciler.run("STARTUP")
         blockers: list[str] = []
+        if self._reconciler is None:  # no exchange reader in this deployment: cannot complete
+            return RecoveryResult(boot_id, False, ("NO_EXCHANGE_READER",), "NONE")
+        run = self._reconciler.run("STARTUP")
         if run.outcome != "OK":
             blockers.append(
                 "RECONCILIATION_FAILED" if run.outcome == "FAILED" else "RECONCILIATION_MISMATCH"

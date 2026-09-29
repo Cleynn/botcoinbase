@@ -15,15 +15,26 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from app.adapters.coinbase_public import CoinbasePublicClient
+from app.auth.audit import AuditWriter
 from app.backtest.service import BacktestError, BacktestService
 from app.config import ConfigError, Settings, load_settings
 from app.domain.models import Clock, SystemClock
+from app.exchange.factory import build_gateway, build_reader
+from app.exchange.gateway import ExecutionGateway
+from app.exchange.reader import ExchangeReader, RecordingReader, RetryingReader
 from app.market.ingest import GRANULARITY, STEP, Importer
 from app.market.snapshots import SnapshotBuilder, SnapshotError
 from app.pairs.runner import RunnerError
 from app.paper.exchange import PaperError, PaperExchange
 from app.proposals.validator import ProposalValidator
 from app.review.builder import ReviewBuilder
+from app.safety.commands import CommandRunner
+from app.safety.control import ControlService
+from app.safety.host_control import HostControl
+from app.safety.monitor import SafetyMonitor
+from app.safety.reconciler import Reconciler
+from app.safety.recovery import RecoveryService
+from app.safety.retry import RetryPolicy
 from app.storage.database import SchemaError, Storage, StorageUnavailable
 
 HOST_ROLE = "td_ctl"
@@ -65,6 +76,19 @@ def _parser() -> argparse.ArgumentParser:
     proposal.add_parser("cleanup", help="remove old proposal content and orphan files")
     proposal.add_parser("list", help="list proposals")
 
+    safety = top.add_parser("safety").add_subparsers(dest="command", required=True)
+    safety.add_parser("status", help="bot control state, reconciliation and the live gate")
+    safety.add_parser("recover", help="startup recovery: reconcile before any action")
+    safety.add_parser("reconcile", help="run one REST reconciliation")
+    safety.add_parser("monitor", help="evaluate breaker signals and open the breaker if needed")
+    safety.add_parser("commands", help="run the queued cancel command for known bot orders")
+    safety.add_parser("pause", help="pause the bot")
+    kill = safety.add_parser("kill", help="activate the kill switch (never sells)")
+    kill.add_argument("--confirm", required=True, help="the exact phrase ACTIVATE KILL SWITCH")
+    release = safety.add_parser("kill-release", help="release the kill switch (host only)")
+    release.add_argument("--confirm", required=True, help="the exact phrase RELEASE KILL SWITCH")
+    safety.add_parser("prune", help="delete exchange call records older than seven days")
+
     paper = top.add_parser("paper").add_subparsers(dest="command", required=True)
     paper.add_parser("status")
     start = paper.add_parser("start")
@@ -84,6 +108,8 @@ def main(
     clock: Clock | None = None,
     sleep: Callable[[float], None] = time.sleep,
     out: Callable[[str], None] = print,
+    reader: ExchangeReader | None = None,
+    gateway: ExecutionGateway | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -98,7 +124,7 @@ def main(
         if args.group == "market" and args.command == "import" and client is None:
             owned = client = CoinbasePublicClient(settings.exchange)
         try:
-            return _dispatch(args, settings, storage, clock, client, sleep, out)
+            return _dispatch(args, settings, storage, clock, client, sleep, out, reader, gateway)
         finally:
             if owned is not None:
                 owned.close()
@@ -118,7 +144,11 @@ def _dispatch(
     client: CoinbasePublicClient | None,
     sleep: Callable[[float], None],
     out: Callable[[str], None],
+    reader: ExchangeReader | None = None,
+    gateway: ExecutionGateway | None = None,
 ) -> int:
+    if args.group == "safety":
+        return _safety(args, settings, storage, clock, out, reader, gateway)
     if args.group == "market":
         return _market(args, settings, storage, clock, client, sleep, out)
     if args.group == "backtest":
@@ -215,6 +245,123 @@ def _proposal(
     with storage.tx() as repos:
         for row in repos.proposals.recent(50):
             out(f"{row.id} {row.state} {row.category or '-'}")
+    return 0
+
+
+def _reconciler(
+    settings: Settings,
+    storage: Storage,
+    clock: Clock,
+    reader: ExchangeReader | None,
+) -> Reconciler | None:
+    reader = reader or build_reader(settings)
+    if reader is None:
+        return None
+    venue = reader.venue if reader.venue in ("PAPER", "FAKE") else "FAKE"
+
+    def sink(operation: str, ok: bool, code: str | None) -> None:
+        with storage.tx() as repos:
+            repos.safety.add_api_event(venue, operation, ok, code, clock.now())
+
+    wrapped = RetryingReader(
+        RecordingReader(reader, sink), RetryPolicy.from_settings(settings.safety)
+    )
+    return Reconciler(storage=storage, clock=clock, settings=settings, reader=wrapped, venue=venue)
+
+
+def _safety(
+    args: argparse.Namespace,
+    settings: Settings,
+    storage: Storage,
+    clock: Clock,
+    out: Callable[[str], None],
+    reader: ExchangeReader | None,
+    gateway: ExecutionGateway | None,
+) -> int:
+    host = HostControl(storage=storage, clock=clock, settings=settings)
+    if args.command == "status":
+        view = ControlService(
+            storage=storage,
+            clock=clock,
+            settings=settings,
+            audit=AuditWriter(clock),
+            consume_reauth=lambda _r, _c: False,
+            reauth_active=lambda _c: False,
+        ).overview()
+        c = view.control
+        out(f"LIVE TRADING: BLOCKED ({len(view.gate.reasons)} unmet conditions)")
+        out(
+            f"bot={c.bot_state} kill_switch={c.kill_switch} breaker={c.breaker_state} "
+            f"recovery={c.recovery_state}"
+        )
+        run = view.run
+        out(
+            "reconciliation: none"
+            if run is None
+            else f"reconciliation: {run.outcome} at {run.finished_at.isoformat()} ({run.trigger})"
+        )
+        out(
+            "attempts: " + (", ".join(f"{k}={v}" for k, v in sorted(view.counts.items())) or "none")
+        )
+        out("resume blockers: " + (", ".join(view.resume_blockers) or "none"))
+        return 0
+    if args.command in ("recover", "reconcile"):
+        reconciler = _reconciler(settings, storage, clock, reader)
+        if reconciler is None and args.command == "reconcile":
+            out("NO_EXCHANGE_READER: no exchange reader exists in this deployment; nothing to do")
+            return 1
+        if args.command == "reconcile":
+            assert reconciler is not None  # noqa: S101
+            run_result = reconciler.run("MANUAL")
+            out(
+                f"reconciliation {run_result.outcome} "
+                f"findings={','.join(run_result.codes) or 'none'}"
+            )
+            return 0 if run_result.outcome == "OK" else 1
+        recovery = RecoveryService(
+            storage=storage, clock=clock, settings=settings, reconciler=reconciler
+        ).run()
+        out(
+            f"recovery complete={recovery.complete} run={recovery.run_outcome} "
+            f"blockers={','.join(recovery.blockers) or 'none'}; the bot stays PAUSED"
+        )
+        return 0 if recovery.complete else 1
+    if args.command == "monitor":
+        tick = SafetyMonitor(storage=storage, clock=clock, settings=settings, host=host).tick()
+        out(f"breaker {'OPENED: ' + tick.tripped if tick.tripped else 'unchanged'}")
+        return 0
+    if args.command == "commands":
+        exchange = PaperExchange(storage=storage, clock=clock, settings=settings)
+        gateways = {}
+        active_gateway = gateway or build_gateway(settings)
+        if active_gateway is not None:
+            gateways[active_gateway.venue] = active_gateway
+        outcome = CommandRunner(
+            storage=storage,
+            clock=clock,
+            settings=settings,
+            gateways=gateways,
+            paper_cancel=exchange.cancel_for_safety,
+        ).run_pending()
+        out(
+            "no pending command" if outcome is None else f"command {outcome.state} {outcome.counts}"
+        )
+        return 0 if outcome is None or outcome.state == "DONE" else 1
+    if args.command == "pause":
+        out("paused" if host.pause() else "already paused")
+        return 0
+    if args.command == "kill":
+        killed = host.activate_kill(args.confirm)
+        out(f"kill switch: {killed.kind}")
+        return 0 if killed.kind == "ok" else 1
+    if args.command == "kill-release":
+        released = host.release_kill(args.confirm)
+        out(
+            f"kill switch release: {released.kind}; the bot stays PAUSED and recovery must be redone"
+        )
+        return 0 if released.kind == "ok" else 1
+    with storage.tx() as repos:
+        out(f"pruned {repos.safety.prune_api_events()} call records")
     return 0
 
 
