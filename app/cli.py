@@ -1,4 +1,8 @@
-"""Command line: `validate-config` and `serve`. No trading, pair or bot commands exist."""
+"""Command line: `validate-config`, `serve` and `pairs`.
+
+`pairs` (discovery, seeding, validation) reads public Coinbase market data only. No trading, order
+or bot-control command exists.
+"""
 
 from __future__ import annotations
 
@@ -11,15 +15,26 @@ from app.config import ConfigError, load_settings
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    args_in = list(sys.argv[1:] if argv is None else argv)
+    if args_in and args_in[0] == "pairs":
+        from app.pairs.cli import main as pairs_main
+
+        return pairs_main(args_in[1:])
+
     parser = argparse.ArgumentParser(prog="tradingdots")
-    parser.add_argument("command", choices=["validate-config", "serve"])
-    args = parser.parse_args(argv)
+    parser.add_argument("command", choices=["validate-config", "serve", "pairs"])
+    args = parser.parse_args(args_in)
 
     if args.command == "serve":
         from app.main import main as serve
 
         serve()
         return 0
+
+    if args.command == "pairs":  # `pairs` without a subcommand
+        from app.pairs.cli import main as pairs_main
+
+        return pairs_main([])
 
     try:
         settings = load_settings()

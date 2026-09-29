@@ -78,9 +78,10 @@ def test_navigation_differs_by_role(admin_client: TestClient, viewer_client: Tes
     assert 'href="/audit"' in admin_nav and 'href="/audit"' not in viewer_nav
     for nav in (admin_nav, viewer_nav):
         assert 'href="/security"' in nav
-        for later in ("Bot", "Pairs", "Reports", "LLM Review"):
+        assert 'href="/pairs"' in nav  # Phase 4: a real page for every signed-in user
+        for later in ("Bot", "Reports", "LLM Review"):
             assert re.search(rf'aria-disabled="true">{later} ', nav)
-        assert 'href="/bot"' not in nav and 'href="/pairs"' not in nav
+        assert 'href="/bot"' not in nav
 
 
 def test_pages_work_without_javascript_and_load_no_external_assets(

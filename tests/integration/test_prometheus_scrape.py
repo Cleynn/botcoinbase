@@ -29,7 +29,7 @@ from app.config import MonitoringSettings, Settings
 from app.main import _start_metrics_listener
 from app.monitoring.collectors import Monitoring
 from app.monitoring.metrics import BY_FAMILY, EXTERNAL_PREFIXES, MetricsServer
-from app.storage.database import StorageUnavailable
+from app.storage.database import StorageUnavailable, head_version
 from tests.conftest import ROOT, FakeClock
 
 MON = ROOT / "infra" / "monitoring"
@@ -287,7 +287,7 @@ def test_dashboard_shows_a_simple_monitoring_summary_and_the_grafana_link(
         "Prometheus last scrape",
     ):
         assert label in known, label
-    assert "current (v1)" in known and "verified (1 events)" in known
+    assert f"current (v{head_version()})" in known and "verified (1 events)" in known
     assert 'href="https://grafana.tradingdots.onthewall.ovh/"' in body
     assert not any(tag in body.lower() for tag in ("<iframe", "<embed", "<object"))
 

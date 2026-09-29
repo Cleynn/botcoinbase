@@ -16,6 +16,8 @@ class Permission(StrEnum):
     VIEW_USER_DIRECTORY = "view_user_directory"
     REVOKE_USER_SESSIONS = "revoke_user_sessions"
     VIEW_AUDIT = "view_audit"
+    VIEW_PAIRS = "view_pairs"
+    MANAGE_PAIRS = "manage_pairs"
 
 
 _VIEWER = frozenset(
@@ -26,6 +28,7 @@ _VIEWER = frozenset(
         Permission.REAUTHENTICATE,
         Permission.REVOKE_OWN_SESSIONS,
         Permission.LOGOUT,
+        Permission.VIEW_PAIRS,
     }
 )
 _ADMIN = _VIEWER | frozenset(
@@ -33,6 +36,7 @@ _ADMIN = _VIEWER | frozenset(
         Permission.VIEW_USER_DIRECTORY,
         Permission.REVOKE_USER_SESSIONS,
         Permission.VIEW_AUDIT,
+        Permission.MANAGE_PAIRS,
     }
 )
 

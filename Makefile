@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status
+.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status
 
 format:
 	uv run ruff check --fix .
@@ -44,3 +44,16 @@ verify-monitoring-config:
 # Read-only: asks Prometheus (inside its container) for target health and firing alerts.
 monitoring-status:
 	$(PY) scripts/monitoring_status.py
+
+# Phase 4: pair discovery and validation (public Coinbase market data only, via the allowlist proxy).
+pairs-discover:
+	docker compose --profile discovery run --rm pairs discover
+
+pairs-seed:
+	docker compose --profile discovery run --rm pairs seed --queue-validation
+
+pairs-validate:
+	docker compose --profile discovery run --rm pairs validate
+
+pairs-list:
+	docker compose --profile discovery run --rm pairs list

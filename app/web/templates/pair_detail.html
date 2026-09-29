@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ view.product_id }} <span class="badge state-{{ view.state|lower }}">{{ view.state }}</span></h1>
+<p><a href="/pairs">All pairs</a> · <a href="/pairs/products">Discovered products</a></p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p>{{ view.state_help }}</p>
+
+<section aria-labelledby="life-h">
+  <h2 id="life-h">Lifecycle</h2>
+  <ol class="lifecycle" aria-label="Lifecycle position">
+    {% for name, css in view.lifecycle %}
+    <li class="{{ css }}"{% if css == 'current' %} aria-current="step"{% endif %}>{{ name }}{% if css == 'blocked' %} <small>(blocked in this build)</small>{% endif %}</li>
+    {% endfor %}
+  </ol>
+  {% if view.side_state %}<p>Side state: <strong>{{ view.side_state }}</strong></p>{% endif %}
+  <p>State version {{ view.version }}. Validity for activation: <strong>{{ "VALID (passing, unexpired, current metadata)" if view.valid else "not valid" }}</strong>.</p>
+</section>
+
+{% if view.is_admin %}
+<section aria-labelledby="act-h">
+  <h2 id="act-h">Actions</h2>
+  {% if not view.actions %}<p>No action is available from this state.</p>{% endif %}
+  <ul class="actions">
+  {% for a in view.actions %}
+    <li>
+      {% if a.needs_phrase %}
+        <a class="button" href="{{ a.href }}">{{ a.label }}…</a> <small>(password and typed phrase required)</small>
+      {% else %}
+        <form method="post" action="/pairs/{{ view.id }}/{{ a.action }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+          <input type="hidden" name="version" value="{{ view.version }}">
+          <button type="submit">{{ a.label }}</button>
+        </form>
+      {% endif %}
+      {% if a.blockers %}<br><small>Currently refused: {% for code in a.blockers %}<code>{{ code }}</code> {{ pair_reason(code) }}{% if not loop.last %}; {% endif %}{% endfor %}</small>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section aria-labelledby="meta-h">
+  <h2 id="meta-h">Product metadata</h2>
+  <p>Metadata age: <strong>{{ view.metadata_age }}</strong>{% if view.metadata_stale %} <strong>(stale)</strong>{% endif %}. Values come from Coinbase public data and are shown as text.</p>
+  <div class="table-wrap"><table>
+    <caption class="visually-hidden">Product metadata</caption>
+    <tbody>
+    {% for label, value in view.facts %}<tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>{% endfor %}
+    {% for label, value in view.flags %}<tr><th scope="row">Flag {{ label }}</th><td>{{ value }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="hist-h">
+  <h2 id="hist-h">History state</h2>
+  <ul>{% for label, value in view.history_state %}<li><strong>{{ label }}:</strong> {{ value }}</li>{% endfor %}</ul>
+</section>
+
+<section aria-labelledby="val-h">
+  <h2 id="val-h">Validation results</h2>
+  {% if not view.latest_run %}
+    <p>Not validated yet.</p>
+  {% else %}
+    <p>Latest run {{ view.latest_run.finished }}: <strong>{{ view.latest_run.outcome }}</strong>. Evidence expires {{ view.latest_run.expires }}{% if view.latest_run.expired %} (<strong>expired</strong>){% endif %}. Thresholds fingerprint {{ view.latest_run.thresholds }}.</p>
+    <div class="table-wrap"><table>
+      <caption class="visually-hidden">Validation checks</caption>
+      <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Reason</th><th scope="col">Explanation</th><th scope="col">Observed</th></tr></thead>
+      <tbody>
+      {% for c in view.latest_run.checks %}
+        <tr><td>{{ c.label }}</td><td><span class="badge check-{{ c.status|lower }}">{{ c.status }}</span></td><td><code>{{ c.reason }}</code></td><td>{{ c.message }}</td><td>{{ c.observed }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if view.earlier_runs %}
+    <h3>Earlier runs</h3>
+    <ul>{% for r in view.earlier_runs %}<li>{{ r.finished }}: {{ r.outcome }}</li>{% endfor %}</ul>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section aria-labelledby="tr-h">
+  <h2 id="tr-h">State transitions</h2>
+  <div class="table-wrap"><table>
+    <caption class="visually-hidden">State transitions, oldest first</caption>
+    <thead><tr><th scope="col">Version</th><th scope="col">Transition</th><th scope="col">By</th><th scope="col">Reason</th><th scope="col">When</th><th scope="col">Audit #</th></tr></thead>
+    <tbody>
+    {% for h in view.transitions %}
+      <tr><td>{{ h.version }}</td><td>{{ h.transition }}</td><td>{{ h.actor }}</td><td>{{ h.reason }}</td><td>{{ h.when }}</td><td>{{ h.audit_seq }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="aud-h">
+  <h2 id="aud-h">Audit timeline</h2>
+  {% if not view.audit_detailed %}
+    <p>The audit timeline is shown to ADMIN users. The transitions above are the same history without actor details.</p>
+  {% else %}
+  <div class="table-wrap"><table>
+    <caption class="visually-hidden">Audit events for this pair, newest first</caption>
+    <thead><tr><th scope="col">#</th><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Result</th><th scope="col">Reason</th><th scope="col">Actor</th><th scope="col">Client</th></tr></thead>
+    <tbody>
+    {% for a in view.audit %}
+      <tr><td>{{ a.seq }}</td><td>{{ a.when }}</td><td>{{ a.code }}</td><td>{{ a.result }}</td><td>{{ a.reason }}</td><td>{{ a.actor }}</td><td>{{ a.client }}</td></tr>
+    {% else %}
+      <tr><td colspan="7">No events.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% endblock %}

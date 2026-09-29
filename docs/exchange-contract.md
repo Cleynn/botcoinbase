@@ -42,3 +42,12 @@ Direct fetch of docs.cdp.coinbase.com was denied by the sandbox egress proxy. Se
 - A "Coinbase App Rate Limiting" page exists (`/coinbase-app/api-architecture/rate-limiting`); check in Phase 9.0 (AS-C5).
 - Current doc paths: `/coinbase-app/advanced-trade-apis/...`, `/api-reference/advanced-trade-api/rest-api/{orders,products,public}/...`,
   `/get-started/authentication/jwt-authentication`.
+
+## Phase 4 usage (public client)
+The runner uses exactly the five CB-2 paths through `app/adapters/coinbase_public.py`. **Response shapes are those documented above
+and remembered from the public docs; none was verified against the live API from this repository** (the sandbox cannot reach
+api.coinbase.com), so AS-C1 stays open and the fixtures in `tests/coinbase_fakes.py` are **synthetic**. Unverified assumptions the
+code makes and that must be checked against a real response before relying on validation results: `product_venue == "CBE"` for
+spot products; `status == "online"` is the only tradable status; `alias` holds the `-USD` product for a `-USDC` product;
+`approximate_quote_24h_volume` exists for ranking; candles arrive newest first with string numbers; the book carries `time`.
+If any of these is wrong, discovery stores nothing or validation reports INCONCLUSIVE; it never passes by default.

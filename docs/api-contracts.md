@@ -34,3 +34,26 @@ authorization → CSRF/Origin → fresh, single-use reauthentication (`/security
 
 ## Audit catalogue
 `auth.login.{success,failure,throttled}`, `auth.logout`, `session.{expired,revoked,rejected}`, `auth.password.{changed,change_failed}`, `auth.reauth.{success,failure,throttled}`, `authz.denied`, `csrf.rejected`, `admin.{sessions_revoked,sessions_revoke_denied,created,password_rotated}`. Records hold actor, result, reason code, a keyed hash of the client (never the address), request id and a scalar-only detail (secret-looking keys are refused). The log is append-only (database triggers) and hash-chained; `/audit` recomputes the chain on every view.
+
+## Pairs (Phase 4)
+Reads need `view_pairs` (any signed-in user); every change needs `manage_pairs` (ADMIN). All writes are CSRF-protected POSTs
+with strict forms (unknown fields rejected). A `version` field carries the pair version the page showed; a mismatch is refused
+(409, audited `STALE_VERSION`). GET never writes.
+
+| Method | Path | Access | Form fields | Success | Failures |
+|---|---|---|---|---|---|
+| GET | `/pairs` | view_pairs | `?msg=` | 200 list, lifecycle, counts | 303 |
+| GET | `/pairs/products` | view_pairs | `?show=default\|all`, `?page=1..1000` | 200 discovered products | 400 |
+| GET | `/pairs/{id}` | view_pairs | `?msg=` | 200 detail (ADMIN also sees actions and the audit timeline) | 404 |
+| POST | `/pairs/candidates` | manage_pairs | `csrf_token, product_id` (product UUID) | 303 `/pairs/{id}?msg=pair_proposed` | 400, 404, 409 (duplicate, cap) |
+| POST | `/pairs/{id}/validate` | manage_pairs | `csrf_token, version` | 303, state VALIDATING | 404, 409 |
+| POST | `/pairs/{id}/pause` | manage_pairs | `csrf_token, version` | 303 | 404, 409 |
+| POST | `/pairs/{id}/deactivate` | manage_pairs | `csrf_token, version` | 303 | 404, 409 |
+| GET | `/pairs/{id}/{action}/request` | manage_pairs | | 200 confirmation page (no write) | 404 |
+| POST | `/pairs/{id}/{action}/reauth` | manage_pairs | `csrf_token, version, password` | 303 to the request page | 400, 429 |
+| POST | `/pairs/{id}/{action}/confirm` | manage_pairs | `csrf_token, version, confirmation` | 303 `/pairs/{id}?msg=pair_<done>` | 400 (phrase, reauth), 404, 409 (stale, illegal, guard) |
+
+`action` is one of `activate, resume, disable, reenable, archive`. There is no DELETE route: pairs are archived, never deleted.
+New audit events: `product.discovered`, `pair.proposed`, `pair.validation_started`, `pair.research_only`, `pair.paper_eligible`,
+`pair.eligibility_expired`, `pair.activated_paper`, `pair.paused`, `pair.resumed_paper`, `pair.deactivated`, `pair.disabled`,
+`pair.reenabled`, `pair.archived`, `pair.transition_denied`.

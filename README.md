@@ -32,6 +32,9 @@ docker compose run --rm -it ctl python scripts/create_admin.py   # first ADMIN, 
 ## Make targets
 `format lint typecheck test up down logs health verify-security-config verify-monitoring-config monitoring-status` (plus `verify-security-config-example`).
 
+## Pairs (Phase 4)
+Discovery, validation and lifecycle of USDC spot pairs from public Coinbase data: see `docs/pair-management.md`. Nothing here trades, reads an account or enables live trading.
+
 ## Layout
 `app/` application, `config/` YAML profiles, `infra/` Caddy and Postgres init, `scripts/` health,
 bootstrap and security validation, `tests/` (`tests/pending/` holds not-yet-runnable skeletons for later

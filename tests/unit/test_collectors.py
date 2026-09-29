@@ -8,12 +8,13 @@ import pytest
 
 from app.domain.enums import AuditEventType, Role
 from app.domain.models import ChainStatus
+from app.domain.pairs import PairState
 from app.monitoring import health
 from app.monitoring.alerts import AttentionItem, evaluate_attention, load_rule_catalogue
 from app.monitoring.collectors import AppCollector, build_monitoring
 from app.monitoring.health import MonitoringSnapshot
 from app.monitoring.metrics import Metrics
-from app.storage.database import StorageUnavailable
+from app.storage.database import StorageUnavailable, head_version
 from tests.conftest import ROOT, Account, FakeClock
 from tests.unit.test_metrics import parse
 
@@ -201,7 +202,7 @@ def test_snapshot_reads_real_state_and_counts_events(
 ) -> None:
     monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
     s = monitoring.service.snapshot()
-    assert s.db_up and s.schema_version == s.expected_schema_version == 1
+    assert s.db_up and s.schema_version == s.expected_schema_version == 2
     assert s.sessions_active == 1 and s.users_by_role == {"ADMIN": 1}
     assert s.audit_event_counts == {"auth.login.success": 1} and s.audit_events_total == 1
     assert s.chain is not None and s.chain.ok and s.chain_verified_at == clock.now()
@@ -290,7 +291,7 @@ def test_summary_rows_use_plain_words_and_offer_no_controls(
     monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
     rows = dict(monitoring.service.summary().rows)
     assert rows["Monitoring status"] == "OK"
-    assert rows["Database"] == "reachable" and rows["Schema"] == "current (v1)"
+    assert rows["Database"] == "reachable" and rows["Schema"] == f"current (v{head_version()})"
     assert rows["Prometheus last scrape"] == "none yet"
     assert not any(word in " ".join(rows.values()) for word in ("Unknown", "Not available"))
 
@@ -342,3 +343,60 @@ def test_every_alert_has_a_distinct_severity_within_the_policy() -> None:
     rules = load_rule_catalogue(ROOT / "infra/monitoring/alert_rules.yml")
     assert {r.severity for r in rules} == {"critical", "high", "warn", "info"}
     assert all(r.expr and r.group in {"infrastructure", "application", "security"} for r in rules)
+
+
+def test_pair_metrics_are_real_database_counts(
+    env: Any, storage: Any, clock: Any, settings: Any
+) -> None:
+    from prometheus_client.parser import text_string_to_metric_families
+
+    from app.monitoring.collectors import build_monitoring
+
+    env.eligible("BTC-USDC")
+    env.make("ETH-USDC", PairState.PROPOSED)
+    monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
+    clock.advance(60)
+    fams = {f.name: f for f in text_string_to_metric_families(monitoring.metrics.render().decode())}
+    states = {s.labels["state"]: s.value for s in fams["tradingdots_pair_state_total"].samples}
+    assert states == {
+        "PROPOSED": 1,
+        "VALIDATING": 0,
+        "RESEARCH_ONLY": 0,
+        "PAPER_ELIGIBLE": 1,
+        "PAPER_ACTIVE": 0,
+        "PAUSED": 0,
+        "DISABLED": 0,
+        "ARCHIVED": 0,
+    }
+    assert fams["tradingdots_pair_candidates_total"].samples[0].value == 2
+    assert fams["tradingdots_pair_metadata_age_seconds"].samples[0].value >= 0
+
+
+def test_pair_metrics_have_zero_states_before_any_pair_and_no_age(
+    storage: Any, clock: Any, settings: Any
+) -> None:
+    from prometheus_client.parser import text_string_to_metric_families
+
+    from app.monitoring.collectors import build_monitoring
+
+    monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
+    fams = {f.name: f for f in text_string_to_metric_families(monitoring.metrics.render().decode())}
+    assert sum(s.value for s in fams["tradingdots_pair_state_total"].samples) == 0
+    assert fams["tradingdots_pair_candidates_total"].samples[0].value == 0
+    assert (
+        "tradingdots_pair_metadata_age_seconds" not in fams
+        or not fams["tradingdots_pair_metadata_age_seconds"].samples
+    )
+
+
+def test_pair_metrics_carry_no_product_identity(
+    env: Any, storage: Any, clock: Any, settings: Any
+) -> None:
+    from app.monitoring.collectors import build_monitoring
+
+    env.eligible("BTC-USDC")
+    body = (
+        build_monitoring(storage=storage, clock=clock, settings=settings).metrics.render().decode()
+    )
+    assert "BTC-USDC" not in body and "BTC" not in body.replace("tradingdots", "")
+    assert "USDC" not in body and 'product="' not in body and 'pair="' not in body

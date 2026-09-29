@@ -5,9 +5,9 @@ Update this file at the end of every phase or session. Master Contract and `docs
 ## Project state
 - Repository: `cleynn/botcoinbase`
 - Branch: `claude/epic-carson-18byfr`
-- Commit: `eef7311` (Phase 3: monitoring); previous: `7091205` (Phase 2), `09c9d9c` (Phase 1)
+- Phase 4 (pairs) committed on top of `eef7311` (Phase 3), `7091205` (Phase 2), `09c9d9c` (Phase 1); see `git log`
 - Tag `td-3.1`: local only; the tag push fails ("remote hung up"), do not retry without a policy change
-- Package version: 0.3.0
+- Package version: 0.4.0; schema version 2 (migration `0002_pairs.sql`)
 - Mode: BACKTEST only
 - Live trading: BLOCKED
 - Gate: PAPER ONLY. Not approved for the next phase.
@@ -28,13 +28,17 @@ Update this file at the end of every phase or session. Master Contract and `docs
   - Validators `make verify-monitoring-config` and `make monitoring-status`.
   - Docs: `docs/monitoring.md`, `alert-policy.md`, `grafana-access.md`, DEC-011/012.
 
+- Phase 4: public product discovery, pair policy, 14-check validation with stored reasons, DB-enforced lifecycle, Pairs UI/API, full-chain disable/archive/activate, host CLI (`make pairs-*`), egress allowlist proxy. Activation is wired but REFUSED (no bot state). Fees must be operator-attested in `config/pair-policy.yaml` or every validation is INCONCLUSIVE. See `docs/pair-management.md`, DEC-013/014.
+
 ## Verified
+- Phase 4: 1200 tests passed (0 skipped), real-browser check 12/12 against SYNTHETIC Coinbase data.
 - `ruff format`, `ruff check`, `mypy app scripts`: clean.
 - Full `pytest`: 782 passed, including real `promtool` rule tests and a real Prometheus end-to-end scrape (needs `TD_PROMETHEUS_DIR` and `TD_NODE_EXPORTER_DIR`; without them those tests skip).
 - Full-stack check (real app process, Chromium, real Prometheus and node_exporter): 20/20. 28 rules healthy, 51 dashboard queries execute.
 - `make verify-security-config` and `make verify-monitoring-config` pass with a generated `.env` (deleted afterwards).
 
 ## Not yet verified
+- Phase 4: real Coinbase response shapes (AS-C1; fixtures are synthetic), Docker start of `egress-proxy`/`pairs`, proxy vs the live host.
 - No Docker daemon was available: container start and health, Caddy proxying Grafana, node-exporter host mounts, cAdvisor and resource sizing are untested.
 - Grafana was never run (download host blocked). Dashboards were validated structurally and by running every query against real Prometheus. Provisioning, rendering and the admin-reset command are unverified.
 - `docker compose config` (including `--profile cadvisor`) has not been run.

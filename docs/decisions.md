@@ -119,6 +119,28 @@ deviations are **prohibited** while no independent reviewer exists (SD-6).
 - Not verified: container start and health checks for the new services, Caddy proxying Grafana, Grafana first start and rendering, cAdvisor, resource estimates, host mounts on the VPS.
 - review: SELF
 
+### DEC-013: Phase 4 pairs (2026-09-29)
+Implemented: public product discovery, pair policy, 14-check validation with persisted reasons, lifecycle with database-enforced transitions, Pairs UI/API, disable/archive/re-enable/activate/resume full chain, pair audit events and metrics, host CLI, egress allowlist proxy. Deviations from the baseline (all stricter or smaller in scope, none touches a security invariant):
+- **No `td_worker`.** Discovery, seeding, validation and expiry run from the host CLI as `td_ctl` until the worker exists (baseline 4.1). `td_ctl` is the only role that can write products, metadata and validation runs; `td_app` cannot. Actor class (WEB/HOST) is derived from `current_user` inside the trigger.
+- **Egress proxy included** (baseline 4.1) as a small Python CONNECT allowlist (`api.coinbase.com:443` only, public addresses only), `discovery` profile only. `scripts/verify_security_config.py` now permits exactly one non-Caddy service on a non-internal network: `egress-proxy` on `egress_ext`.
+- **Not created** (out of scope for Phase 4): ledger, intent and attempt tables, `work_requests`, `runtime_configs`, package and proposal tables. Fees are therefore operator-attested in `config/pair-policy.yaml` (RQ-3 later moves them to a runtime config kind).
+- **Activation is wired but refused** by the default runtime gate (`BOT_STATE_UNAVAILABLE`, `MODE_NOT_PAPER`): the baseline requires a PAUSED bot in PAPER mode. Tighter than baseline: activation is also refused while any other pair is PAUSED, and disable/archive of a previously active pair is refused until reconciliation can show it clean (it cannot yet).
+- **Confirmation challenge:** the baseline binds a reauth challenge to (session, action, target, version). Phase 2's single-use, 120 s session reauthentication is reused; the target and version are bound by the typed phrase (which contains the product id) and the `version` form field (stale views are refused).
+- **LIVE_ELIGIBLE / LIVE_ACTIVE** appear in the UI as blocked lifecycle steps only; no enum member, CHECK excludes them, the active-pair unique index still lists `LIVE_ACTIVE`.
+- **Metadata:** `products`, append-only `product_metadata_snapshots`, mutable `product_metadata_current` as in the baseline; `allowed_transitions` seeded from the code table and compared by a test.
+- **Metrics:** `tradingdots_pair_candidates_total` and `tradingdots_pair_state_total` published (gauges under contract names); `tradingdots_pair_metadata_age_seconds` is an extension. `tradingdots_bot_product_metadata_age_seconds` stays reserved (no bot).
+- **VIEWERs** see transitions without actor names and no audit timeline.
+- **FEE_MODEL_V1** (25th-percentile daily range / levels vs 2 x maker fee + edge, at attested and stress rates) is an engineering assumption, replaceable in Phase 5.
+- **Files beyond an obvious pair list:** `app/config.py` (validation, fee and exchange settings), `app/api/app.py`/`dependencies.py`/`errors` untouched except wiring, `app/auth/session.py` (`reauth_is_fresh`), `app/monitoring/*` (pair metrics), `app/web/*`, `docker-compose.yml`, `Makefile`, `pyproject.toml` (httpx now a runtime dependency; version 0.4.0), existing tests updated for the new routes, roles, schema version and metrics.
+- **Unverified:** real Coinbase response shapes (AS-C1, fixtures are synthetic), container start of `egress-proxy` and `pairs`, proxy against the live host.
+- review: SELF (non-security deviations). **No independent security review has been performed.**
+
+### DEC-014: Phase 4 verification record
+- Full suite 1200 passed, 0 skipped (real PostgreSQL 16, real promtool/Prometheus/node_exporter); ruff, format and mypy strict clean.
+- Real process + Chromium (pgserver DB, `app.cli serve`, runner against SYNTHETIC Coinbase data): 12/12 checks, including disable with password + exact phrase, wrong-case phrase refusal, no CSP violations, no horizontal scroll at 375 px.
+- Not verified: any real Coinbase response (network denied, fixtures synthetic), Docker start of `egress-proxy`/`pairs`, proxy against the live host, Grafana.
+- review: SELF
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

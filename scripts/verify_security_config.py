@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.config import ConfigError, load_settings, secret_problem  # noqa: E402
 
+EGRESS_PROXY = "egress-proxy"
 PUBLISHER = "caddy"
 ALLOWED_PUBLISHED = {("80", "tcp"), ("443", "tcp")}
 EXTRA_SECRETS = (
@@ -126,8 +127,20 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
         if (net or {}).get("internal"):
             continue
         attached = {n for n, s in services.items() if net_name in (_names(s.get("networks")))}
-        if attached - {PUBLISHER}:
+        # Caddy (edge_public) and the allowlist egress proxy (egress_ext) are the only services
+        # that may sit on a network with a route out.
+        allowed = {PUBLISHER} if net_name != "egress_ext" else {EGRESS_PROXY}
+        if attached - allowed:
             problems.append(f"non-internal network '{net_name}' is used by non-Caddy services")
+    proxy = services.get(EGRESS_PROXY)
+    if proxy is not None:
+        if proxy.get("profiles") != ["discovery"]:
+            problems.append("egress-proxy must run only under the discovery profile")
+        if set(_names(proxy.get("networks"))) != {"egress_int", "egress_ext"}:
+            problems.append("egress-proxy must join exactly egress_int and egress_ext")
+    for name, svc in services.items():
+        if "egress_int" in _names(svc.get("networks")) and name not in {EGRESS_PROXY, "pairs"}:
+            problems.append(f"service '{name}' must not join egress_int")
     return problems
 
 

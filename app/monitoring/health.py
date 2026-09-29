@@ -36,6 +36,8 @@ class MonitoringSnapshot:
     audit_event_counts: dict[str, int] | None = None
     chain: ChainStatus | None = None
     chain_verified_at: datetime | None = None
+    pair_state_counts: dict[str, int] | None = None
+    pair_oldest_verified_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,8 @@ class MonitoringService:
                     audit_events_total=repos.monitoring.audit_last_seq(),
                     audit_last_event_at=repos.monitoring.audit_last_event_at(),
                     audit_event_counts=repos.monitoring.audit_counts(),
+                    pair_state_counts=repos.pairs.state_counts(),
+                    pair_oldest_verified_at=repos.pairs.oldest_metadata_age_basis(),
                 )
                 self._refresh_chain(repos, now)
         except Exception:  # noqa: BLE001  monitoring must never raise into the application

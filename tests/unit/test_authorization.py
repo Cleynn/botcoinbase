@@ -18,11 +18,13 @@ VIEWER_ALLOWED = {
     Permission.REAUTHENTICATE,
     Permission.REVOKE_OWN_SESSIONS,
     Permission.LOGOUT,
+    Permission.VIEW_PAIRS,
 }
 ADMIN_ONLY = {
     Permission.VIEW_USER_DIRECTORY,
     Permission.REVOKE_USER_SESSIONS,
     Permission.VIEW_AUDIT,
+    Permission.MANAGE_PAIRS,
 }
 
 

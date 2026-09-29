@@ -12,6 +12,7 @@ from app import constants
 from app.config import Settings
 from app.domain.enums import AuditEventType, Role
 from app.domain.models import Clock
+from app.domain.pairs import PairState
 from app.monitoring.health import MonitoringService, MonitoringSnapshot
 from app.monitoring.metrics import VERSION, Metrics, MetricsServer
 from app.storage.database import Storage
@@ -99,6 +100,27 @@ class AppCollector(Collector):
                     "Time of the newest audit event.",
                     snap.audit_last_event_at.timestamp(),
                 )
+        if snap.pair_state_counts is not None:
+            counts = snap.pair_state_counts
+            yield _gauge(
+                "tradingdots_pair_candidates_total",
+                "Pairs that are not archived (candidates and the active pair).",
+                sum(n for state, n in counts.items() if state != PairState.ARCHIVED.value),
+            )
+            by_state = GaugeMetricFamily(
+                "tradingdots_pair_state_total",
+                "Pairs currently in each lifecycle state (a count, not a counter: contract name).",
+                labels=["state"],
+            )
+            for state in PairState:  # fixed series set, zeros included: they are real counts
+                by_state.add_metric([state.value], counts.get(state.value, 0))
+            yield by_state
+            oldest = snap.pair_oldest_verified_at
+            yield _gauge(
+                "tradingdots_pair_metadata_age_seconds",
+                "Age of the oldest verified product metadata among non-archived pairs.",
+                (snap.taken_at - oldest).total_seconds() if oldest is not None else None,
+            )
         if snap.chain is not None:
             yield _gauge(
                 "tradingdots_audit_chain_ok",

@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import constants
-from app.api import admin, auth, dashboard, health
+from app.api import admin, auth, dashboard, health, pairs
 from app.api.dependencies import Services, access_guard, csrf_guard
 from app.api.errors import BodySizeLimitMiddleware, register_error_handlers
 from app.auth.audit import AuditWriter
@@ -24,7 +24,9 @@ from app.auth.session import AuthService, derive_key
 from app.config import ConfigError, Settings, load_settings
 from app.domain.models import Clock, SystemClock
 from app.monitoring.collectors import build_monitoring
+from app.pairs.service import PairService, RuntimeGate, UnavailableRuntimeGate
 from app.storage.database import Storage
+from app.web.pair_views import reason_text
 from app.web.view_models import WEB_DIR, Renderer
 
 logger = logging.getLogger("app")
@@ -47,7 +49,12 @@ SECURITY_HEADERS = {
 }
 
 
-def build_services(settings: Settings, storage: Storage, clock: Clock) -> Services:
+def build_services(
+    settings: Settings,
+    storage: Storage,
+    clock: Clock,
+    pair_gate: RuntimeGate | None = None,
+) -> Services:
     secret = settings.secret_key
     if secret is None or len(secret.get_secret_value()) < constants.MIN_SECRET_LENGTH:
         raise ConfigError(
@@ -67,15 +74,27 @@ def build_services(settings: Settings, storage: Storage, clock: Clock) -> Servic
         audit=audit,
         csrf_key=csrf_key,
     )
+    renderer = Renderer(settings)
+    renderer.add_global("pair_reason", reason_text)
+    pair_service = PairService(
+        storage=storage,
+        clock=clock,
+        policy=settings.pair_policy,
+        audit=audit,
+        gate=pair_gate or UnavailableRuntimeGate(settings.mode),
+        consume_reauth=auth_service.consume_reauth,
+        reauth_active=auth_service.reauth_is_fresh,
+    )
     return Services(
         settings=settings,
         storage=storage,
         clock=clock,
         auth=auth_service,
+        pairs=pair_service,
         audit=audit,
         limiter=limiter,
         csrf_key=csrf_key,
-        renderer=Renderer(settings),
+        renderer=renderer,
         cookie=settings.cookie,
         trusted_networks=tuple(
             ipaddress.ip_network(n, strict=False) for n in settings.trusted_proxies
@@ -88,12 +107,13 @@ def create_app(
     *,
     storage: Storage | None = None,
     clock: Clock | None = None,
+    pair_gate: RuntimeGate | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     storage = storage or Storage(settings.database)
     storage.check_schema()  # refuse to start against an older or newer schema
     clock = clock or SystemClock()
-    services = build_services(settings, storage, clock)
+    services = build_services(settings, storage, clock, pair_gate)
     monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
 
     app = FastAPI(
@@ -143,5 +163,6 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(dashboard.router)
     app.include_router(admin.router)
+    app.include_router(pairs.router)
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     return app

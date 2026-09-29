@@ -26,3 +26,14 @@ Chosen by fixed codes (`?msg=password_changed`); unknown codes are ignored. No u
 
 ## Session behaviour visible to users
 Idle timeout 30 min, absolute 12 h, at most 5 sessions (oldest is ended). Logout, password change, revocation and expiry send the browser to `/login`; HTMX polling receives `HX-Redirect`.
+
+## Pairs (Phase 4)
+Navigation gains **Pairs** (real page). `/pairs`: lifecycle (LIVE_ELIGIBLE and LIVE_ACTIVE shown as blocked), active pair,
+open-candidate count, state counts, pair table (state badge, data basis, latest validation, validated time, metadata age with a
+"stale" marker). `/pairs/products`: paginated discovered products (default candidates first view, "show all" toggle, reason a
+product is not a default candidate, add button for ADMIN only). `/pairs/{id}`: lifecycle position, validity, actions with the reasons
+they are currently refused, every metadata field and flag, metadata age, history state (daily history, five-minute candle
+quality), the 14 validation checks with result, reason code, fixed explanation and observed values, earlier runs, state transitions,
+and (ADMIN) the audit timeline; a VIEWER sees transitions without actor names and no audit timeline. Confirmation pages show the
+exact phrase, a password step and a phrase step, and no form at all while a guard refuses. All exchange-derived text is escaped
+by the template engine (nothing is marked safe) and reduced to a safe vocabulary before storage.

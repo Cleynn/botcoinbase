@@ -34,7 +34,7 @@ from app.domain.models import Clock
 
 logger = logging.getLogger("app")
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 METRICS_PATH = "/metrics"
 # Classic text format: understood by every Prometheus release, including the pinned 2.53 image.
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -155,6 +155,27 @@ CATALOGUE: tuple[MetricSpec, ...] = (
         "tradingdots_audit_last_verified_timestamp_seconds",
         "gauge",
         "When the audit chain was last verified.",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_pair_candidates_total",
+        "gauge",
+        "Pairs that are not archived (candidates and the active pair).",
+        (),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_pair_state_total",
+        "gauge",
+        "Pairs currently in each lifecycle state (a count, not a counter: contract name).",
+        ("state",),
+        "database",
+    ),
+    MetricSpec(
+        "tradingdots_pair_metadata_age_seconds",
+        "gauge",
+        "Age of the oldest verified product metadata among non-archived pairs.",
         (),
         "database",
     ),

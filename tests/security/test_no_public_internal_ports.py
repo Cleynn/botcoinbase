@@ -208,3 +208,53 @@ def test_bootstrap_generates_valid_private_env_without_printing_secrets(
     assert all(v not in result.stdout + result.stderr for k, v in env.items() if "PASSWORD" in k)
     again = subprocess.run([BASH, str(tmp_path / "scripts/bootstrap.sh")], capture_output=True)  # noqa: S603
     assert again.returncode != 0 and os.path.exists(env_path)
+
+
+# ------------------------------------------------------------------ Phase 4: discovery profile
+def test_discovery_services_are_profile_only_and_unpublished(compose: dict[str, Any]) -> None:
+    for name in ("egress-proxy", "pairs"):
+        svc = compose["services"][name]
+        assert svc["profiles"] == ["discovery"] and not svc.get("ports")
+        assert svc["read_only"] is True and "ALL" in svc["cap_drop"]
+    assert compose["services"]["pairs"]["restart"] == "no"
+
+
+def test_only_the_egress_proxy_has_a_route_to_the_internet(compose: dict[str, Any]) -> None:
+    external = [n for n, net in compose["networks"].items() if not (net or {}).get("internal")]
+    assert set(external) == {"edge_public", "egress_ext"}
+    for name, svc in compose["services"].items():
+        nets = set(svc.get("networks") or [])
+        if "egress_ext" in nets:
+            assert name == "egress-proxy"
+        if "edge_public" in nets:
+            assert name == "caddy"
+    assert set(compose["services"]["pairs"]["networks"]) == {"backend", "egress_int"}
+    assert set(compose["services"]["egress-proxy"]["networks"]) == {"egress_int", "egress_ext"}
+    assert "egress_int" not in (compose["services"]["app"]["networks"])
+
+
+def test_the_runner_uses_the_host_role_and_never_the_web_or_owner_credentials(
+    compose: dict[str, Any],
+) -> None:
+    env = compose["services"]["pairs"]["environment"]
+    assert env["TD_DB_USER"] == "td_ctl" and "CTL_PASSWORD" in env["TD_DB_PASSWORD"]
+    assert not any("OWNER" in str(v) or "APP_PASSWORD" in str(v) for v in env.values())
+    assert env["TD_EGRESS_PROXY"] == "http://egress-proxy:3128"
+
+
+def test_the_egress_proxy_cannot_be_moved_onto_other_networks_or_run_by_default(
+    verify: ModuleType, compose: dict[str, Any]
+) -> None:
+    assert verify.check_compose(compose) == []
+    mutated = copy.deepcopy(compose)
+    mutated["services"]["app"]["networks"] = [*mutated["services"]["app"]["networks"], "egress_ext"]
+    assert any("non-internal network 'egress_ext'" in p for p in verify.check_compose(mutated))
+    mutated = copy.deepcopy(compose)
+    mutated["services"]["egress-proxy"]["profiles"] = []
+    assert any("discovery profile" in p for p in verify.check_compose(mutated))
+    mutated = copy.deepcopy(compose)
+    mutated["services"]["postgres"]["networks"] = [
+        *mutated["services"]["postgres"]["networks"],
+        "egress_int",
+    ]
+    assert any("must not join egress_int" in p for p in verify.check_compose(mutated))

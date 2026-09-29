@@ -8,3 +8,33 @@ grid_levels: 3
 max_active_pairs: 1
 regridding_enabled: false
 capital_growth_enabled: false
+max_pairs: 20              # non-archived pair rows (candidates included); hard ceiling 20
+
+# Validation thresholds (Phase 4). Every value is bounded in app/config.py so configuration
+# cannot loosen a check absurdly. Ratios and rates are strings (Decimal), never floats.
+validation:
+  ttl_hours: 24                    # a PASS run stops counting as VALID after this long
+  max_metadata_age_seconds: 3600   # product metadata older than this is stale
+  max_clock_offset_seconds: 5      # local clock vs Coinbase /time
+  min_history_days: 90             # daily candles required
+  max_missing_history_days: 2
+  quality_window_candles: 288      # newest closed five-minute candles inspected (24 h)
+  max_gap_ratio: "0.10"            # missing five-minute buckets in that window
+  max_stale_seconds: 900           # newest closed candle may not be older than this
+  max_candle_jump_ratio: "0.25"    # close-to-close move between adjacent candles
+  max_spread_bps: "30"
+  min_depth_quote: "250"           # USDC on each side within depth_band_ratio of mid
+  depth_band_ratio: "0.01"
+  book_max_age_seconds: 60
+  max_tick_ratio: "0.0005"         # price_increment / price
+
+# Fees are OPERATOR-ATTESTED. No primary Coinbase fee schedule has been retrieved (CF-15), so no
+# rate is assumed here. Until both fields below are set, and while the attestation is older than
+# review_interval_days, the FEE_VIABILITY check is INCONCLUSIVE and no pair can become
+# PAPER_ELIGIBLE. Rates are fractions of notional: "0.006" = 0.60% per side.
+fees:
+  operator_maker_rate: null
+  attested_on: null
+  review_interval_days: 30
+  stress_maker_rate: "0.006"
+  min_net_edge: "0.001"

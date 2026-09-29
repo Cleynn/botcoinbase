@@ -50,7 +50,7 @@ services:
     <<: *hardening
     restart: "no"
     build: *app-build
-    image: tradingdots-app:phase2
+    image: tradingdots-app:phase4
     user: "10001:10001"
     command: ["python", "-m", "app.storage.database", "migrate"]
     environment:
@@ -69,7 +69,7 @@ services:
   app:
     <<: *hardening
     build: *app-build
-    image: tradingdots-app:phase2
+    image: tradingdots-app:phase4
     user: "10001:10001"
     expose: ["8000"]
     environment:
@@ -152,7 +152,7 @@ services:
     restart: "no"
     profiles: [ops]
     build: *app-build
-    image: tradingdots-app:phase2
+    image: tradingdots-app:phase4
     user: "10001:10001"
     command: ["python", "-m", "app.cli", "validate-config"]
     stdin_open: true
@@ -169,6 +169,56 @@ services:
     networks: [backend]
     depends_on:
       migrate: {condition: service_completed_successfully}
+    mem_limit: 256m
+    pids_limit: 100
+
+  # ---- Pairs (Phase 4): public market-data discovery and validation. Profile "discovery" only ----
+  # Never started by `make up`. The runner has no route to the internet: its only way out is the
+  # allowlist proxy below, which permits CONNECT to api.coinbase.com:443 and nothing else.
+  #   docker compose --profile discovery run --rm pairs discover
+  #   docker compose --profile discovery run --rm pairs seed --queue-validation
+  #   docker compose --profile discovery run --rm pairs validate
+  egress-proxy:
+    <<: *hardening
+    profiles: [discovery]
+    build: *app-build
+    image: tradingdots-app:phase4
+    user: "10001:10001"
+    command: ["python", "-m", "app.adapters.egress_proxy"]
+    read_only: true
+    tmpfs: ["/tmp:size=8m"]
+    networks: [egress_int, egress_ext]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 2).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 64m
+    pids_limit: 50
+
+  pairs:
+    <<: *hardening
+    restart: "no"
+    profiles: [discovery]
+    build: *app-build
+    image: tradingdots-app:phase4
+    user: "10001:10001"
+    entrypoint: ["python", "-m", "app.cli", "pairs"]
+    command: ["list"]
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+      TD_DB_USER: td_ctl
+      TD_DB_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
+      TD_EGRESS_PROXY: http://egress-proxy:3128
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    networks: [backend, egress_int]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      egress-proxy: {condition: service_healthy}
     mem_limit: 256m
     pids_limit: 100
 
@@ -326,6 +376,8 @@ networks:
       config:
         - subnet: 172.29.20.0/24
   mon_query: {internal: true}        # Prometheus <-> Grafana
+  egress_int: {internal: true}       # pairs runner <-> egress-proxy (profile discovery)
+  egress_ext: {}                     # egress-proxy only: the one allowlisted way to the internet
 
 volumes:
   caddy_data: {}

@@ -71,3 +71,11 @@ Prometheus is capped at 30 days and 15 GB (expected use is far lower; estimate).
 
 ## No second host, no off-host backups
 By owner decision (DEC-006) neither is implemented or planned. Host loss means loss of local data.
+
+## Pairs (Phase 4)
+1. Set the fee attestation in `config/pair-policy.yaml` (`fees.operator_maker_rate`, `fees.attested_on`) from your own Coinbase fee tier; renew every 30 days. Without it every validation is INCONCLUSIVE.
+2. `make pairs-discover`, then `make pairs-seed` (queues validation), then `make pairs-validate`. Check `/pairs`.
+3. A pair is PAPER_ELIGIBLE only after a full PASS. It is never activated automatically; activation is unavailable until the bot phases exist.
+4. Evidence expires after 24 h; `make pairs-validate` re-queues expired pairs' validation (they move to VALIDATING, then run).
+5. Disable/archive: open the pair, choose the action, confirm your password, type the phrase. An active or previously active pair cannot be archived.
+6. Rollback of this phase: `git revert`; `python -m app.storage.database rollback --to 1 --i-understand-data-loss` (development only) drops pair tables; audit events already written stay.

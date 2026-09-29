@@ -54,3 +54,11 @@
 - Time comes from the application clock, not the database clock.
 - No second host: audit anchoring and off-host backups do not exist (DEC-006). A fully privileged database owner can still rewrite the chain undetectably.
 - VIEWER accounts cannot be created yet (no allowed provisioning path); the role is implemented and tested.
+
+## Phase 4 (pairs)
+- [x] No private Coinbase call, credential, signing or order code exists (source scan tests); the web tier never imports the client.
+- [x] Only `egress-proxy` has a route out, allowing `CONNECT api.coinbase.com:443` only, refusing non-public resolved addresses.
+- [x] Lifecycle enforced in the database: transition table + trigger per actor class, no DELETE, history row required, one active pair unique index (covers `LIVE_ACTIVE`), append-only evidence.
+- [x] Disable/archive/activate: ADMIN + CSRF + fresh single-use reauth + exact typed phrase + stale-version check + audit (denials audited too).
+- [x] Exchange strings are sanitised at parse time and escaped at render time (both tested).
+- [ ] Not verified: real Coinbase response shapes, container start of `egress-proxy`/`pairs`, proxy behaviour against the live host.

@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import psycopg
@@ -26,6 +26,9 @@ from app.storage.models import (
     session_from_row,
     user_from_row,
 )
+
+if TYPE_CHECKING:
+    from app.storage.pair_repositories import PairRepository, ProductRepository
 
 GENESIS_HASH = "0" * 64
 MAX_DETAIL_BYTES = 4096
@@ -399,13 +402,19 @@ class Repos:
     attempts: LoginAttemptRepository
     audit: AuditRepository
     monitoring: MonitoringRepository
+    products: ProductRepository
+    pairs: PairRepository
 
     @classmethod
     def bind(cls, conn: Conn) -> Repos:
+        from app.storage.pair_repositories import PairRepository, ProductRepository
+
         return cls(
             UserRepository(conn),
             SessionRepository(conn),
             LoginAttemptRepository(conn),
             AuditRepository(conn),
             MonitoringRepository(conn),
+            ProductRepository(conn),
+            PairRepository(conn),
         )
