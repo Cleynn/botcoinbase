@@ -141,6 +141,26 @@ Implemented: public product discovery, pair policy, 14-check validation with per
 - Not verified: any real Coinbase response (network denied, fixtures synthetic), Docker start of `egress-proxy`/`pairs`, proxy against the live host, Grafana.
 - review: SELF
 
+### DEC-015: Phase 5 market data, backtest and paper trading (2026-09-29)
+Implemented: Decimal-safe money helpers, candle validation and data-quality events, public OHLCV importer (dry run by default), ingestion cursor, product metadata freshness gate, deterministic Parquet snapshots with checksums and provenance, indicators, trend/range filters, geometric grid builder, pair score, fee-aware backtest (operator and stress fees) with walk-forward, one shared pure trader used by both the backtest and the paper exchange, a local persisted restart-safe paper exchange, JSON and Markdown reports, read-only Reports pages, read-only metrics, host CLI. Deviations and choices:
+- **New runtime dependency: pyarrow** (Parquet). Bytes are made deterministic (zstd, no dictionary, no stored schema); integrity comes from `file_sha256` and `content_sha256`, verified on every load.
+- **No worker.** As in Phase 4, everything runs from the host CLI as `td_ctl` (`batch` service, profile `discovery`, same egress-proxy model as `pairs`). `td_app` is SELECT-only on all new tables.
+- **PaperRuntimeGate replaces the always-refusing default gate.** A pair may activate only in PAPER mode while the paper session is PAUSED; production still refuses PAPER (`production_problems`). Open paper orders or inventory make a pair "not clean" (blocks disable/archive).
+- **Capital backstop in the database:** hard-coded 50/15/35 constants, a single 50 USDC deposit, orders only for the PAPER_ACTIVE pair while the session is RUNNING. Independent of, and in addition to, the trader's own invariants.
+- **Fees stay operator-attested** (`fees.*` in `config/pair-policy.yaml`); without a valid attestation the backtest and paper start refuse. Stress maker fee 0.006.
+- **Not built (no live orders exist to act on):** flatten/dust write-off, kill switch, circuit breakers beyond the drawdown HALT, reconciliation. Growth and regridding stay disabled (refused in config validation and in the trader).
+- **Metrics extensions** beyond the reserved catalogue: nine `tradingdots_ingest_*`, `data_quality_*`, `backtest_*`, `reports_*` and `paper_*` families (see `docs/backtest-and-paper.md`).
+- **Strategy and simulation are engineering assumptions**, not validated edge. The FEE_MODEL_V1 of Phase 4 is unchanged.
+- **Defects found and fixed while testing:** `--days 0` silently meant "default"; a too-short walk-forward raised a bare ValueError; a migration CHECK required a grid plan before one could exist; report detail overflowed at 375 px.
+- review: SELF. **No independent security review has been performed.**
+
+### DEC-016: Phase 5 verification record
+- Full suite 1400 passed, 0 skipped (real PostgreSQL, real promtool/Prometheus/node_exporter); ruff, format and mypy clean.
+- Real processes + Chromium (pgserver DB, real CLI subprocesses, `app.cli serve`, SYNTHETIC candles): 16/16 checks, including snapshot, backtest, idempotent repeat, paper refusal, web-role refusal, read-only files, plain-text attachment download, no horizontal scroll at 375 px, no CSP violations.
+- Migration 0003 rollback to schema 2 verified on a real PostgreSQL (market and paper tables removed, pairs kept).
+- Not verified: any real Coinbase response (network denied; all fixtures synthetic, AS-C1), Docker start of `batch`/`egress-proxy`/`pairs` (no Docker daemon), `/data` volume ownership in a container, `docker compose config`, Grafana.
+- review: SELF
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;
