@@ -206,7 +206,7 @@ def test_no_component_metrics_leak_a_zero_for_unbuilt_parts(
         "bot_deployed_quote",
         "bot_protected_reserve",
         "bot_realized_pnl",
-        "llm_",
+        "llm_review",
         "data_freshness",
         "order_intents",
         "fee_paid",

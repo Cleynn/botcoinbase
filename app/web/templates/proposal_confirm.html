@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ view.title }} <span class="badge badge-untrusted">{{ view.label }}</span></h1>
+<p><a href="{{ view.back_href }}">Back</a></p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice"><strong>{{ view.label }}.</strong> {{ view.notice }}</p>
+<ul>{% for line in view.summary %}<li>{{ line }}</li>{% endfor %}</ul>
+<section aria-labelledby="pw-h">
+  <h2 id="pw-h">Step 1: confirm your password</h2>
+  <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
+  <form method="post" action="{{ view.action_path }}/reauth" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="reauth_password">Password</label>
+       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+    <p><button type="submit">Confirm password</button></p>
+  </form>
+</section>
+<section aria-labelledby="ph-h">
+  <h2 id="ph-h">Step 2: {{ "complete the form and type the phrase" if view.phrase else "complete the form" }}</h2>
+  <form method="post" action="{{ view.action_path }}/confirm" class="stacked"{% if view.multipart %} enctype="multipart/form-data"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    {% for f in view.fields %}
+      {% if f.kind == "select" %}
+      <p><label for="f_{{ f.name }}">{{ f.label }}</label>
+         <select id="f_{{ f.name }}" name="{{ f.name }}" required>{% for o in f.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></p>
+      {% elif f.kind == "textarea" %}
+      <p><label for="f_{{ f.name }}">{{ f.label }}</label>
+         <textarea id="f_{{ f.name }}" name="{{ f.name }}" rows="8" maxlength="{{ f.max_length }}" spellcheck="false" autocomplete="off"></textarea>{% if f.hint %}<br><small>{{ f.hint }}</small>{% endif %}</p>
+      {% elif f.kind == "checkbox" %}
+      <p><label><input type="checkbox" name="{{ f.name }}" value="true"> {{ f.label }}</label></p>
+      {% elif f.kind == "file" %}
+      <p><label for="f_{{ f.name }}">{{ f.label }}</label>
+         <input id="f_{{ f.name }}" name="{{ f.name }}" type="file" accept=".json,.txt,application/json,text/plain"></p>
+      {% else %}
+      <p><label for="f_{{ f.name }}">{{ f.label }}</label>
+         <input id="f_{{ f.name }}" name="{{ f.name }}" type="text" maxlength="{{ f.max_length }}" autocomplete="off" spellcheck="false"></p>
+      {% endif %}
+    {% endfor %}
+    {% if view.phrase %}
+    <p><label for="confirmation">Type <code>{{ view.phrase }}</code> exactly</label>
+       <input id="confirmation" name="confirmation" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="200" required></p>
+    {% endif %}
+    <p><button type="submit">{{ view.submit_label }}</button></p>
+  </form>
+</section>
+{% endblock %}

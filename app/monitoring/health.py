@@ -40,6 +40,10 @@ class MarketFacts:
     review_enabled: bool
     review_counts: dict[str, int]
     review_last_ready: datetime | None
+    proposal_import_enabled: bool
+    proposal_counts: dict[str, int]
+    proposals_total: int
+    proposal_policy_rejections: int
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,10 @@ def _market_facts(repos: Repos) -> MarketFacts:
         review_enabled=repos.review.settings().enabled,
         review_counts=repos.review.counts(),
         review_last_ready=repos.review.last_ready(),
+        proposal_import_enabled=repos.proposals.settings().import_enabled,
+        proposal_counts=repos.proposals.counts(),
+        proposals_total=repos.proposals.total(),
+        proposal_policy_rejections=repos.proposals.policy_rejections(),
     )
 
 

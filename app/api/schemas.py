@@ -114,3 +114,28 @@ class ReviewRequestConfirm(ReviewRequestFields):
 
 class ReviewPackageAction(_Form):
     pass
+
+
+# ---------------------------------------------------------------- proposals (Phase 7)
+class ProposalDisableForm(_Form):
+    pass
+
+
+class ProposalReviewForm(_Form):
+    notes: str = Field(min_length=1, max_length=1000)
+
+
+class ProposalChangeRequestForm(_Form):
+    confirmation: str = Field(max_length=200)
+    change_type: str = Field(max_length=32)
+    impact_assessment: str = Field(max_length=2000)
+    ceilings_unaffected: bool = False
+
+
+class ProposalAttestForm(_Form):
+    reference: str | None = Field(default=None, max_length=64)
+    report_ids: str | None = Field(default=None, max_length=400)
+
+
+class ProposalCloseForm(_Form):
+    reason: str = Field(max_length=32)

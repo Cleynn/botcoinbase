@@ -189,6 +189,31 @@ class AppCollector(Collector):
                 "When a review package was last built.",
                 m.review_last_ready.timestamp() if m.review_last_ready else None,
             )
+            yield _gauge(
+                "tradingdots_proposal_import_enabled",
+                "1 if untrusted proposal import is enabled (disabled by default), else 0.",
+                1 if m.proposal_import_enabled else 0,
+            )
+            proposals = GaugeMetricFamily(
+                "tradingdots_proposals",
+                "Imported proposals by state (counts only, never proposal content).",
+                labels=["state"],
+            )
+            for prop_state in (
+                "IMPORTED", "VALIDATING", "VALIDATED", "REJECTED", "REVIEWED",
+                "CHANGE_REQUEST_CREATED", "IMPLEMENTED", "BACKTESTED", "PAPER_VALIDATED", "CLOSED",
+            ):  # fmt: skip
+                proposals.add_metric([prop_state], m.proposal_counts.get(prop_state, 0))
+            yield proposals
+            imported = CounterMetricFamily("tradingdots_llm_proposals", "Proposals ever imported.")
+            imported.add_metric([], m.proposals_total)
+            yield imported
+            rejections = CounterMetricFamily(
+                "tradingdots_llm_proposal_policy_rejections",
+                "Proposals with at least one policy finding.",
+            )
+            rejections.add_metric([], m.proposal_policy_rejections)
+            yield rejections
             counts = snap.audit_event_counts or {}
             downloads = CounterMetricFamily(
                 "tradingdots_review_downloads", "Audited review package downloads."

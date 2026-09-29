@@ -1,4 +1,4 @@
-"""Host CLI for market data, backtests, paper trading and review packages.
+"""Host CLI for market data, backtests, paper trading, review packages and proposals.
 
 Runs as `td_ctl` from the `batch` container, never in the web process. Importing is a dry run unless
 `--commit` is given. Nothing here places an order anywhere: the only "exchange" is the local paper
@@ -22,6 +22,7 @@ from app.market.ingest import GRANULARITY, STEP, Importer
 from app.market.snapshots import SnapshotBuilder, SnapshotError
 from app.pairs.runner import RunnerError
 from app.paper.exchange import PaperError, PaperExchange
+from app.proposals.validator import ProposalValidator
 from app.review.builder import ReviewBuilder
 from app.storage.database import SchemaError, Storage, StorageUnavailable
 
@@ -58,6 +59,11 @@ def _parser() -> argparse.ArgumentParser:
     which.add_argument("--all", action="store_true")
     review.add_parser("cleanup", help="expire packages past retention and remove their files")
     review.add_parser("list", help="list review packages")
+
+    proposal = top.add_parser("proposal").add_subparsers(dest="command", required=True)
+    proposal.add_parser("validate", help="validate every imported proposal")
+    proposal.add_parser("cleanup", help="remove old proposal content and orphan files")
+    proposal.add_parser("list", help="list proposals")
 
     paper = top.add_parser("paper").add_subparsers(dest="command", required=True)
     paper.add_parser("status")
@@ -124,6 +130,8 @@ def _dispatch(
         return 0
     if args.group == "review":
         return _review(args, settings, storage, clock, out)
+    if args.group == "proposal":
+        return _proposal(args, settings, storage, clock, out)
     exchange = PaperExchange(storage=storage, clock=clock, settings=settings)
     if args.command == "status":
         s = exchange.status()
@@ -182,6 +190,31 @@ def _review(
     with storage.tx() as repos:
         for row in repos.review.recent(50):
             out(f"{row.id} {row.state} {row.period_start}..{row.period_end} {','.join(row.scope)}")
+    return 0
+
+
+def _proposal(
+    args: argparse.Namespace,
+    settings: Settings,
+    storage: Storage,
+    clock: Clock,
+    out: Callable[[str], None],
+) -> int:
+    validator = ProposalValidator(storage=storage, clock=clock, settings=settings)
+    if args.command == "validate":
+        results = validator.run()
+        for r in results:
+            codes = ",".join(sorted({x.split(":")[0] for x in r.rules})[:6])
+            out(f"proposal {r.proposal_id} {r.state}{' ' + codes if codes else ''}")
+        out(f"{len(results)} proposal(s) processed")
+        return 0
+    if args.command == "cleanup":
+        c = validator.cleanup()
+        out(f"content_removed={c.purged} orphan_files_removed={c.orphans}")
+        return 0
+    with storage.tx() as repos:
+        for row in repos.proposals.recent(50):
+            out(f"{row.id} {row.state} {row.category or '-'}")
     return 0
 
 

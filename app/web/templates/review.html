@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Review packages</h1>
+<p>Review packages · <a href="/review/proposals">Proposals</a> (imported LLM proposals: UNTRUSTED ADVISORY INPUT)</p>
 {% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
 <p class="notice"><strong>{{ view.cannot_trade }}</strong></p>
 

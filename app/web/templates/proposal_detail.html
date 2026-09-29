@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Proposal <code>{{ view.id[:8] }}</code> <span class="badge">{{ view.state }}</span> <span class="badge badge-untrusted">{{ view.label }}</span></h1>
+<p><a href="/review/proposals">All proposals</a></p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice"><strong>{{ view.label }}.</strong> {{ view.notice }}</p>
+
+<section aria-labelledby="ns-h">
+  <h2 id="ns-h">Manual next step</h2>
+  <p>{{ view.next_step }}</p>
+</section>
+
+<dl>
+  <dt>State</dt><dd>{{ view.state }}</dd>
+  <dt>Category</dt><dd>{{ view.category }}</dd>
+  <dt>Reference given by the author (untrusted label)</dt><dd>{{ view.ref }}</dd>
+  <dt>Imported</dt><dd>{{ view.imported }}</dd>
+  <dt>Stored file</dt><dd>{{ view.size }}, declared {{ view.mime }}{% if view.content_removed %} · content removed after retention{% endif %}</dd>
+  <dt>SHA-256 of the file</dt><dd><code>{{ view.sha }}</code></dd>
+  {% if view.package_id %}
+  <dt>Linked review package</dt><dd><a href="/review/packages/{{ view.package_id }}"><code>{{ view.package_id }}</code></a><br>SHA-256 <code>{{ view.package_sha }}</code></dd>
+  {% endif %}
+</dl>
+
+{% if view.risk %}
+<section aria-labelledby="rk-h">
+  <h2 id="rk-h">Risk assessment (advisory, computed)</h2>
+  <p>Level: <strong>{{ view.risk.level }}</strong> (score {{ view.risk.score }}) · suggested review depth: {{ view.risk.review_depth }}</p>
+  {% if view.risk_factors %}<ul>{% for f in view.risk_factors %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+
+{% if view.reject_rules or view.findings %}
+<section aria-labelledby="pv-h">
+  <h2 id="pv-h">Validation findings and policy violations</h2>
+  {% if view.reject_rules %}
+  <h3>Reasons</h3>
+  <ul>{% for code, text in view.reject_rules %}<li><code>{{ code }}</code>: {{ text }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if view.findings %}
+  <h3>Policy findings</h3>
+  <div class="table-wrap"><table>
+    <caption class="visually-hidden">Policy findings</caption>
+    <thead><tr><th scope="col">Rule</th><th scope="col">Meaning</th><th scope="col">Field</th><th scope="col">Excerpt (untrusted text)</th></tr></thead>
+    <tbody>{% for rule, text, field, excerpt in view.findings %}<tr><td><code>{{ rule }}</code></td><td>{{ text }}</td><td>{{ field }}</td><td><pre class="untrusted">{{ excerpt }}</pre></td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% elif view.state not in ("IMPORTED", "VALIDATING") %}
+<p>No validation findings.</p>
+{% endif %}
+
+{% if view.fields %}
+<section aria-labelledby="ct-h">
+  <h2 id="ct-h">Proposal content (plain text, {{ view.label }})</h2>
+  {% for name, value in view.fields %}
+  <h3>{{ name }}</h3>
+  <pre class="untrusted" tabindex="0">{{ value }}</pre>
+  {% endfor %}
+  {% if view.assumptions %}<h3>assumptions</h3><ul>{% for a in view.assumptions %}<li><pre class="untrusted">{{ a }}</pre></li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+
+{% if view.evidence %}
+<section aria-labelledby="ev-h">
+  <h2 id="ev-h">Evidence references</h2>
+  <ul>{% for e in view.evidence %}<li>{% if e.href %}<a href="{{ e.href }}"><code>{{ e.text }}</code></a>{% else %}<code>{{ e.text }}</code>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+{% if view.change_request %}
+{% set cr = view.change_request %}
+<section aria-labelledby="cr-h">
+  <h2 id="cr-h">Manual change request <code>{{ cr[0] }}</code></h2>
+  <p>Type {{ cr[1] }} · recorded {{ cr[4] }}{% if cr[3] %} · capital ceilings attested unaffected{% endif %}</p>
+  <pre class="untrusted">{{ cr[2] }}</pre>
+  <p>This is a record only. Implementation is a separate, reviewed project change.</p>
+</section>
+{% endif %}
+{% if view.review_notes %}<h2>Review notes</h2><pre class="untrusted">{{ view.review_notes }}</pre>{% endif %}
+{% if view.attestations %}
+<h2>Attestations</h2>
+<div class="table-wrap"><table>
+  <caption class="visually-hidden">ADMIN attestations</caption>
+  <thead><tr><th scope="col">Step</th><th scope="col">Reference</th><th scope="col">When</th></tr></thead>
+  <tbody>{% for kind, ref, when in view.attestations %}<tr><td>{{ kind }}</td><td><code>{{ ref }}</code></td><td>{{ when }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<p>Attestations are statements by an ADMIN about work done elsewhere. Only the existence and kind of cited reports is checked.</p>
+{% endif %}
+
+<section aria-labelledby="hs-h">
+  <h2 id="hs-h">History</h2>
+  <ol>{% for state, actor, when in view.history %}<li>{{ state }} ({{ actor }}) · {{ when }}</li>{% endfor %}</ol>
+</section>
+
+{% if view.actions %}
+<section aria-labelledby="ac-h">
+  <h2 id="ac-h">Actions</h2>
+  {% if "review" in view.actions %}
+  <form method="post" action="/review/proposals/{{ view.id }}/review" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="notes">Review notes (plain text, up to 1000 characters)</label>
+       <textarea id="notes" name="notes" rows="4" maxlength="1000" required></textarea></p>
+    <p><button type="submit">Record review</button></p>
+  </form>
+  {% endif %}
+  {% if "change-request" in view.actions %}<p><a href="/review/proposals/{{ view.id }}/change-request/request">Create a manual change request…</a></p>{% endif %}
+  {% if "attest-implemented" in view.actions %}<p><a href="/review/proposals/{{ view.id }}/attest/implemented/request">Attest: implemented…</a></p>{% endif %}
+  {% if "attest-backtested" in view.actions %}<p><a href="/review/proposals/{{ view.id }}/attest/backtested/request">Attest: backtested…</a></p>{% endif %}
+  {% if "attest-paper-validated" in view.actions %}<p><a href="/review/proposals/{{ view.id }}/attest/paper-validated/request">Attest: paper validated…</a></p>{% endif %}
+  {% if "close" in view.actions %}
+  <form method="post" action="/review/proposals/{{ view.id }}/close" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="reason">Close with reason</label>
+       <select id="reason" name="reason">{% for r in view.close_reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></p>
+    <p><button type="submit">Close proposal</button></p>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

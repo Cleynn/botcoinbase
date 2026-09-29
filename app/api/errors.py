@@ -81,14 +81,21 @@ class _TooLarge(Exception):
 class BodySizeLimitMiddleware:
     """Pure ASGI cap on request bodies (Content-Length and streamed), before any parsing."""
 
-    def __init__(self, app: ASGIApp, max_bytes: int = MAX_BODY_BYTES) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        max_bytes: int = MAX_BODY_BYTES,
+        overrides: dict[str, int] | None = None,
+    ) -> None:
         self.app = app
         self.max_bytes = max_bytes
+        self.overrides = overrides or {}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        limit = self.overrides.get(scope.get("path", ""), self.max_bytes)
         declared = dict(scope["headers"]).get(b"content-length", b"")
         started = False
         exceeded = False
@@ -116,7 +123,7 @@ class BodySizeLimitMiddleware:
             )
             await send({"type": "http.response.body", "body": b"Request too large."})
 
-        if declared.isdigit() and int(declared) > self.max_bytes:
+        if declared.isdigit() and int(declared) > limit:
             await too_large()
             return
         received = 0
@@ -126,7 +133,7 @@ class BodySizeLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.max_bytes:
+                if received > limit:
                     exceeded = True
                     raise _TooLarge
             return message

@@ -57,6 +57,23 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("GET", "/review/packages/{package_id}"): "manage_review_packages",
     ("POST", "/review/packages/{package_id}/verify"): "manage_review_packages",
     ("POST", "/review/packages/{package_id}/download"): "manage_review_packages",
+    ("GET", "/review/proposals"): "manage_proposals",
+    ("GET", "/review/proposals/import-enable/request"): "manage_proposals",
+    ("POST", "/review/proposals/import-enable/reauth"): "manage_proposals",
+    ("POST", "/review/proposals/import-enable/confirm"): "manage_proposals",
+    ("POST", "/review/proposals/import-disable"): "manage_proposals",
+    ("GET", "/review/proposals/import/request"): "manage_proposals",
+    ("POST", "/review/proposals/import/reauth"): "manage_proposals",
+    ("POST", "/review/proposals/import/confirm"): "manage_proposals",
+    ("GET", "/review/proposals/{proposal_id}"): "manage_proposals",
+    ("POST", "/review/proposals/{proposal_id}/review"): "manage_proposals",
+    ("POST", "/review/proposals/{proposal_id}/close"): "manage_proposals",
+    ("GET", "/review/proposals/{proposal_id}/change-request/request"): "manage_proposals",
+    ("POST", "/review/proposals/{proposal_id}/change-request/reauth"): "manage_proposals",
+    ("POST", "/review/proposals/{proposal_id}/change-request/confirm"): "manage_proposals",
+    ("GET", "/review/proposals/{proposal_id}/attest/{kind}/request"): "manage_proposals",
+    ("POST", "/review/proposals/{proposal_id}/attest/{kind}/reauth"): "manage_proposals",
+    ("POST", "/review/proposals/{proposal_id}/attest/{kind}/confirm"): "manage_proposals",
 }
 PUBLIC = {key for key, value in EXPECTED.items() if value == "public"}
 ADMIN_ONLY = {"/audit", "/security/users/revoke-sessions"}
@@ -93,7 +110,12 @@ def test_anonymous_visitors_cannot_use_any_protected_route(app: Any, client: Tes
         if level == "public":
             continue
         path = template.format(
-            pair_id=uuid4(), report_id=uuid4(), package_id=uuid4(), action="archive"
+            pair_id=uuid4(),
+            report_id=uuid4(),
+            package_id=uuid4(),
+            proposal_id=uuid4(),
+            kind="implemented",
+            action="archive",
         )
         if method == "GET":
             response = client.get(path, follow_redirects=False)

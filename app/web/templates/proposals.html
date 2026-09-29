@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Proposals <span class="badge badge-untrusted">{{ view.label }}</span></h1>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice"><strong>{{ view.label }}.</strong> {{ view.notice }}</p>
+<p><a href="/review">Review packages</a> · Proposals</p>
+
+<section aria-labelledby="st-h">
+  <h2 id="st-h">Import</h2>
+  <p>Status: <strong>{{ "ENABLED" if view.enabled else "DISABLED" }}</strong> (disabled by default) · changed {{ view.updated }}</p>
+  {% if view.enabled %}
+    {% if view.blocker_text %}
+    <p>Import unavailable right now:</p>
+    <ul>{% for text in view.blocker_text %}<li>{{ text }}</li>{% endfor %}</ul>
+    {% else %}
+    <p><a href="/review/proposals/import/request">Import a proposal…</a></p>
+    {% endif %}
+    <form method="post" action="/review/proposals/import-disable" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+      <button type="submit">Disable import</button>
+    </form>
+  {% else %}
+  <p><a href="/review/proposals/import-enable/request">Enable proposal import…</a></p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="pr-h">
+  <h2 id="pr-h">Proposals</h2>
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Imported proposals, newest first</caption>
+      <thead><tr><th scope="col">Proposal</th><th scope="col">State</th><th scope="col">Category</th><th scope="col">Risk</th><th scope="col">Reference</th><th scope="col">Imported</th></tr></thead>
+      <tbody>
+      {% for r in view.rows %}
+        <tr>
+          <td><a href="/review/proposals/{{ r.id }}"><code>{{ r.id[:8] }}</code></a></td>
+          <td><span class="badge">{{ r.state }}</span></td>
+          <td>{{ r.category }}</td>
+          <td>{{ r.risk }}</td>
+          <td>{{ r.ref }}</td>
+          <td>{{ r.imported }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No proposals yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p>Validation runs on the host: <code>make proposal-validate</code>. Old content is removed by <code>make proposal-cleanup</code>.</p>
+</section>
+{% endblock %}

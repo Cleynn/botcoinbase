@@ -17,6 +17,7 @@ from fastapi.responses import Response
 from fastapi.routing import APIRoute
 from starlette.concurrency import run_in_threadpool
 
+from app.api.limits import IMPORT_CONFIRM_PATH
 from app.auth import csrf
 from app.auth.audit import AuditWriter, actor_for
 from app.auth.authorization import (
@@ -37,6 +38,7 @@ from app.domain.enums import AuditEventType, AuditResult
 from app.domain.models import AuthContext, ClientIdentity, Clock
 from app.domain.permissions import Permission
 from app.pairs.service import PairService
+from app.proposals.service import ProposalService
 from app.review.service import ReviewService
 from app.storage.database import Storage
 from app.web.view_models import Renderer
@@ -55,6 +57,7 @@ class Services:
     auth: AuthService
     pairs: PairService
     review: ReviewService
+    proposals: ProposalService
     audit: AuditWriter
     limiter: LoginRateLimiter
     csrf_key: bytes
@@ -206,9 +209,12 @@ async def csrf_guard(request: Request) -> None:
     if not csrf.origin_allowed(request.headers, host, require_https=require_https):
         await reject("ORIGIN")
     supplied = request.headers.get("x-csrf-token")
+    upload = request.url.path == IMPORT_CONFIRM_PATH  # the one route that accepts a single file
+    if upload and _expected_csrf(request, services) is None:
+        await reject("TOKEN")  # never buffer a large body for a request without a session
     if supplied is None:
         try:
-            form = await request.form(max_fields=MAX_FORM_FIELDS, max_files=0)
+            form = await request.form(max_fields=MAX_FORM_FIELDS, max_files=1 if upload else 0)
         except Exception:  # noqa: BLE001  malformed bodies are simply rejected
             await reject("BAD_BODY")
             return

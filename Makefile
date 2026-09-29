@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list
+.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list proposal-validate proposal-cleanup proposal-list
 
 format:
 	uv run ruff check --fix .
@@ -95,3 +95,15 @@ review-cleanup:
 
 review-list:
 	docker compose --profile discovery run --rm batch review list
+
+# Phase 7: imported LLM proposals are UNTRUSTED ADVISORY INPUT. Importing, reviewing and the manual
+# change-request steps are ADMIN web actions; validation and cleanup run on the host. Nothing here
+# applies a proposal or changes any system state.
+proposal-validate:
+	docker compose --profile discovery run --rm batch proposal validate
+
+proposal-cleanup:
+	docker compose --profile discovery run --rm batch proposal cleanup
+
+proposal-list:
+	docker compose --profile discovery run --rm batch proposal list

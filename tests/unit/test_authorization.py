@@ -27,6 +27,7 @@ ADMIN_ONLY = {
     Permission.VIEW_AUDIT,
     Permission.MANAGE_PAIRS,
     Permission.MANAGE_REVIEW_PACKAGES,
+    Permission.MANAGE_PROPOSALS,
 }
 
 

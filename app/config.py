@@ -42,6 +42,7 @@ _ENV_FIELDS = {
     "TD_EGRESS_PROXY": "exchange.egress_proxy",
     "TD_DATA_DIR": "data.data_dir",
     "TD_REVIEW_DIR": "review.dir",
+    "TD_PROPOSAL_DIR": "proposals.dir",
 }
 # Accepted but not mapped onto Settings (used by profile selection, the migrate command and
 # environment-file validation).
@@ -404,6 +405,28 @@ class ReviewSettings(BaseModel):
         return value
 
 
+class ProposalSettings(BaseModel):
+    """Where untrusted proposal files are stored and their fixed limits. Whether import is on is a
+    database flag, DISABLED by default, changed only by the ADMIN confirmation chain."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    dir: str = "/proposals"
+    max_bytes: int = Field(default=128 * 1024, ge=1024, le=128 * 1024)
+    max_depth: int = Field(default=6, ge=2, le=8)
+    retention_days: int = Field(default=90, ge=7, le=3650)
+
+    @field_validator("dir")
+    @classmethod
+    def _dir(cls, value: str) -> str:
+        parts = value.split("/")
+        if not re.fullmatch(r"/[A-Za-z0-9_./-]{1,200}", value) or ".." in parts:
+            raise ValueError("proposals dir must be an absolute path without '..'")
+        if {"static", "web", "public", "templates"} & set(parts) or value.startswith("/app"):
+            raise ValueError("proposals dir must be outside the web root and application code")
+        return value
+
+
 class PairPolicy(BaseModel):
     """Static pair/capital policy. Values may only tighten the hard ceilings in app.constants."""
 
@@ -470,6 +493,7 @@ class Settings(BaseModel):
     exchange: ExchangeSettings = ExchangeSettings()
     data: DataSettings = DataSettings()
     review: ReviewSettings = ReviewSettings()
+    proposals: ProposalSettings = ProposalSettings()
     pair_policy: PairPolicy
 
     @field_validator("trusted_proxies")

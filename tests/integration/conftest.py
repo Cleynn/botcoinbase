@@ -90,3 +90,34 @@ def review(
         admin=admin,
         review_dir=directory,
     )
+
+
+# ---------------------------------------------------------------- Phase 7: proposals
+@pytest.fixture
+def prop(
+    settings: Settings,
+    storage: Storage,
+    ctl_storage: Storage,
+    clock: FakeClock,
+    admin: Any,
+    review: Any,
+    tmp_path: Path,
+) -> Any:
+    """A proposal environment whose review package is real: enabled, requested, built."""
+    from tests.integration.proposal_env import build_proposal_env
+    from tests.integration.test_review_service import enabled, ready
+
+    enabled(review)
+    pid = ready(review)
+    with ctl_storage.tx() as repos:
+        package = repos.review.package(pid)
+    return build_proposal_env(
+        storage=storage,
+        ctl_storage=ctl_storage,
+        clock=clock,
+        settings=settings,
+        admin=admin,
+        directory=tmp_path / "proposals",
+        review=review,
+        package=package,
+    )

@@ -14,9 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import constants
-from app.api import admin, auth, dashboard, health, pairs, reports, review
+from app.api import admin, auth, dashboard, health, pairs, proposals, reports, review
 from app.api.dependencies import Services, access_guard, csrf_guard
 from app.api.errors import BodySizeLimitMiddleware, register_error_handlers
+from app.api.limits import BODY_LIMIT_OVERRIDES
 from app.auth.audit import AuditWriter
 from app.auth.password import PasswordService
 from app.auth.rate_limit import LoginRateLimiter
@@ -26,6 +27,7 @@ from app.domain.models import Clock, SystemClock
 from app.monitoring.collectors import build_monitoring
 from app.pairs.service import PairService, RuntimeGate
 from app.paper.gate import PaperRuntimeGate
+from app.proposals.service import ProposalService
 from app.review.service import ReviewService
 from app.storage.database import Storage
 from app.web.pair_views import reason_text
@@ -95,6 +97,14 @@ def build_services(
         consume_reauth=auth_service.consume_reauth,
         reauth_active=auth_service.reauth_is_fresh,
     )
+    proposal_service = ProposalService(
+        storage=storage,
+        clock=clock,
+        settings=settings,
+        audit=audit,
+        consume_reauth=auth_service.consume_reauth,
+        reauth_active=auth_service.reauth_is_fresh,
+    )
     return Services(
         settings=settings,
         storage=storage,
@@ -102,6 +112,7 @@ def build_services(
         auth=auth_service,
         pairs=pair_service,
         review=review_service,
+        proposals=proposal_service,
         audit=audit,
         limiter=limiter,
         csrf_key=csrf_key,
@@ -145,7 +156,7 @@ def create_app(
         allowed_hosts.append(settings.app_hostname)
     if settings.environment == "test":
         allowed_hosts.append("testserver")
-    app.add_middleware(BodySizeLimitMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, overrides=BODY_LIMIT_OVERRIDES)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     @app.middleware("http")
@@ -177,5 +188,6 @@ def create_app(
     app.include_router(pairs.router)
     app.include_router(reports.router)
     app.include_router(review.router)
+    app.include_router(proposals.router)
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     return app

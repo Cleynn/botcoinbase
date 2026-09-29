@@ -146,6 +146,7 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
         }:
             problems.append(f"service '{name}' must not join egress_int")
     problems += _check_review_volume(services)
+    problems += _check_proposal_volume(services)
     return problems
 
 
@@ -164,6 +165,22 @@ def _check_review_volume(services: dict[str, Any]) -> list[str]:
                 problems.append("app must mount review_packages read-only")
             elif name not in ("app", "batch"):
                 problems.append(f"service '{name}' must not mount review_packages")
+    return problems
+
+
+def _check_proposal_volume(services: dict[str, Any]) -> list[str]:
+    """Untrusted proposal files: only `app` (stores them) and `batch` (validates them) mount the
+    volume, both read-write; nothing else may see it."""
+    problems: list[str] = []
+    for name, svc in services.items():
+        for volume in svc.get("volumes") or []:
+            text = str(volume)
+            if not text.startswith("proposals:"):
+                continue
+            if name not in ("app", "batch"):
+                problems.append(f"service '{name}' must not mount proposals")
+            elif text.endswith(":ro"):
+                problems.append(f"{name} must mount proposals read-write")
     return problems
 
 

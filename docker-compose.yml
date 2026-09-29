@@ -87,6 +87,7 @@ services:
     tmpfs: ["/tmp:size=16m"]
     volumes:
       - review_packages:/review:ro   # protected package downloads read from here, never write
+      - proposals:/proposals         # uploaded proposal bytes: written once, never read by the web tier
     networks:
       edge_app: {}
       backend: {}
@@ -235,6 +236,7 @@ services:
   #   docker compose --profile discovery run --rm batch backtest run --snapshot <id>
   #   docker compose --profile discovery run --rm batch paper status
   #   docker compose --profile discovery run --rm batch review build|verify --all|cleanup
+  #   docker compose --profile discovery run --rm batch proposal validate|cleanup|list
   batch:
     <<: *hardening
     restart: "no"
@@ -257,6 +259,7 @@ services:
     volumes:
       - datasets:/data
       - review_packages:/review   # review packages (read-write here only)
+      - proposals:/proposals      # untrusted proposal files: validated and purged here
     networks: [backend, egress_int]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -430,3 +433,4 @@ volumes:
   grafana_data: {}
   datasets: {}                       # frozen Parquet snapshots (batch service only)
   review_packages: {}                # review package ZIPs: batch writes, app reads (read-only mount)
+  proposals: {}                      # untrusted proposal files: app stores, batch validates

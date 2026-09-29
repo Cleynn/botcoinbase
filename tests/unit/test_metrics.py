@@ -84,9 +84,18 @@ EXPECTED = {
     "tradingdots_review_last_ready_timestamp_seconds",
     "tradingdots_review_downloads_total",
     "tradingdots_review_denied_total",
+    "tradingdots_proposal_import_enabled",
+    "tradingdots_proposals",
+    "tradingdots_llm_proposals_total",
+    "tradingdots_llm_proposal_policy_rejections_total",
 }
 # Contract names that Phase 4 now publishes because a real source exists.
-PUBLISHED_CONTRACT = {"tradingdots_pair_candidates_total", "tradingdots_pair_state_total"}
+PUBLISHED_CONTRACT = {
+    "tradingdots_pair_candidates_total",
+    "tradingdots_pair_state_total",
+    "tradingdots_llm_proposals_total",
+    "tradingdots_llm_proposal_policy_rejections_total",
+}
 # Gauges that keep a contract `_total` name (they count rows, they are not counters).
 GAUGES_NAMED_TOTAL = PUBLISHED_CONTRACT
 
@@ -113,7 +122,10 @@ def test_no_metric_is_invented_for_unfinished_bot_components() -> None:
     assert not [
         n
         for n in m.CATALOGUE_NAMES
-        if re.match(r"tradingdots_(bot_(?!info)|llm_|order|fill|reconcil|kill|breaker|risk)", n)
+        if re.match(
+            r"tradingdots_(bot_(?!info)|llm_(?!proposals_total|proposal_policy_rejections_total)|order|fill|reconcil|kill|breaker|risk)",
+            n,
+        )
     ]
     # pair_* is allowed only for the reviewed set above
     assert {n for n in m.CATALOGUE_NAMES if n.startswith("tradingdots_pair_")} == {

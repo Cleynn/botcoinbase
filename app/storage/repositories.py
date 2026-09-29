@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from app.storage.market_repositories import MarketRepository, ResultRepository
     from app.storage.pair_repositories import PairRepository, ProductRepository
     from app.storage.paper_repositories import PaperRepository
+    from app.storage.proposal_repositories import ProposalRepository
     from app.storage.review_repositories import ExportRepository, ReviewRepository
 
 GENESIS_HASH = "0" * 64
@@ -412,12 +413,14 @@ class Repos:
     paper: PaperRepository
     review: ReviewRepository
     export: ExportRepository
+    proposals: ProposalRepository
 
     @classmethod
     def bind(cls, conn: Conn) -> Repos:
         from app.storage.market_repositories import MarketRepository, ResultRepository
         from app.storage.pair_repositories import PairRepository, ProductRepository
         from app.storage.paper_repositories import PaperRepository
+        from app.storage.proposal_repositories import ProposalRepository
         from app.storage.review_repositories import ExportRepository, ReviewRepository
 
         return cls(
@@ -433,4 +436,5 @@ class Repos:
             PaperRepository(conn),
             ReviewRepository(conn),
             ExportRepository(conn),
+            ProposalRepository(conn),
         )

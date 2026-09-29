@@ -11,7 +11,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 FROM python:3.12-slim-bookworm
 RUN groupadd --gid 10001 tradingdots \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin tradingdots
-RUN mkdir /data /review && chown 10001:10001 /data /review
+RUN mkdir /data /review /proposals && chown 10001:10001 /data /review /proposals
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY app ./app

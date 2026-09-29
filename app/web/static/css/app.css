@@ -83,3 +83,8 @@ pre.report { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; ov
 /* Long digests and ids wrap inside their cell instead of widening the page. */
 dd, dt { overflow-wrap: anywhere; }
 dd code, td code { overflow-wrap: anywhere; word-break: break-all; }
+
+/* Proposals are UNTRUSTED ADVISORY INPUT: shown as escaped plain text, wrapped inside their own box. */
+.badge-untrusted { background: var(--warn-bg, #fff3cd); color: var(--warn-fg, #5c4400); border: 1px solid currentColor; }
+pre.untrusted { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; padding: .5rem .75rem; margin: .25rem 0 1rem; }
+textarea { max-width: 100%; }
