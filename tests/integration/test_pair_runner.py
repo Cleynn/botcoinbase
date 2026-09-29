@@ -11,7 +11,8 @@ import httpx
 import psycopg
 import pytest
 
-from app.adapters.coinbase_public import CoinbasePublicClient, RateLimiter
+from app.adapters.coinbase_public import CoinbasePublicClient
+from app.adapters.ratelimit import RateLimiter
 from app.config import FeePolicy, Settings
 from app.domain.pairs import PairAction, PairState
 from app.pairs.runner import DISCOVERY_CAP, PairRunner, RunnerError

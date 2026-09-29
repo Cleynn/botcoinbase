@@ -69,6 +69,9 @@ select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
 "app/pairs/validation.py" = ["S105", "E501"]
 # SQL literals in the database-level tests are easier to read on one line.
 "tests/integration/test_pair_*.py" = ["E501"]
+"tests/integration/test_safety_*.py" = ["E501"]
+"tests/unit/test_safety_*.py" = ["E501"]
+"tests/unit/test_exchange_boundary.py" = ["E501"]
 # Fixed user-facing message catalogues are long sentences.
 "app/web/pair_views.py" = ["E501"]
 # Enum members named PASSWORD_* are event/permission names, not credentials.

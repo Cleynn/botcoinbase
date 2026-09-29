@@ -16,7 +16,8 @@ from typing import Any
 
 import httpx
 
-from app.adapters.coinbase_public import BASE_URL, CoinbasePublicClient, RateLimiter
+from app.adapters.coinbase_public import BASE_URL, CoinbasePublicClient
+from app.adapters.ratelimit import RateLimiter
 from app.config import ExchangeSettings
 
 DAY = 86400

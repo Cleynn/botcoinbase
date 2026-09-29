@@ -16,7 +16,7 @@ from typing import Final
 
 import httpx
 
-from app.adapters.ratelimit import RateLimiter
+from app.adapters.ratelimit import RateLimiter as RateLimiter  # noqa: PLC0414 (re-export)
 from app.config import ExchangeSettings
 
 BASE_URL: Final = "https://api.coinbase.com/api/v3/brokerage"
