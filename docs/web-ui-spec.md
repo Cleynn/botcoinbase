@@ -40,3 +40,6 @@ by the template engine (nothing is marked safe) and reduced to a safe vocabulary
 
 ## Reports (Phase 5)
 Navigation item "Reports" (ADMIN, VIEWER). List: kind, label badge (BACKTEST or PAPER), created, hash prefix. Detail: banner, provenance, tables, limitations, JSON/Markdown download links. No form, no action button. Every result is labelled BACKTEST or PAPER; nothing implies real trading.
+
+## Review packages (Phase 6)
+Navigation item "Review packages" (ADMIN only). Every page on this surface opens with the notice that a package cannot trade and cannot change the bot, any pair, risk setting, order, configuration or live setting. Overview: feature status (DISABLED by default), enable link or request form (period + scope checkboxes), package table (id prefix, state badge, period, requested, expires, size). Confirmation pages follow the two-step pattern: step 1 password (single use), step 2 exact phrase; nothing is written on GET. Package page: metadata, Verify and Download (ZIP) buttons (POST, CSRF), file list with sizes and digest prefixes. Package content is never rendered.

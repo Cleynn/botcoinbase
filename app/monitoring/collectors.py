@@ -171,6 +171,35 @@ class AppCollector(Collector):
                 "Paper cash not reserved by open buys, in USDC (PAPER only).",
                 float(m.paper_free_cash),
             )
+            yield _gauge(
+                "tradingdots_review_enabled",
+                "1 if read-only review packages are enabled (disabled by default), else 0.",
+                1 if m.review_enabled else 0,
+            )
+            review = GaugeMetricFamily(
+                "tradingdots_review_packages",
+                "Review packages by state (counts only, never package content).",
+                labels=["state"],
+            )
+            for pkg_state in ("REQUESTED", "GENERATING", "READY", "FAILED", "CORRUPT", "EXPIRED"):
+                review.add_metric([pkg_state], m.review_counts.get(pkg_state, 0))
+            yield review
+            yield _gauge(
+                "tradingdots_review_last_ready_timestamp_seconds",
+                "When a review package was last built.",
+                m.review_last_ready.timestamp() if m.review_last_ready else None,
+            )
+            counts = snap.audit_event_counts or {}
+            downloads = CounterMetricFamily(
+                "tradingdots_review_downloads", "Audited review package downloads."
+            )
+            downloads.add_metric([], counts.get("review.downloaded", 0))
+            yield downloads
+            denied = CounterMetricFamily(
+                "tradingdots_review_denied", "Audited refusals of review package actions."
+            )
+            denied.add_metric([], counts.get("review.denied", 0))
+            yield denied
         if snap.chain is not None:
             yield _gauge(
                 "tradingdots_audit_chain_ok",

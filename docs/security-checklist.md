@@ -72,3 +72,13 @@
 - [x] Snapshot integrity verified on every load (size, file hash, content hash).
 - [x] Report downloads are `text/plain` attachments; report text is escaped.
 - [ ] `batch` container start, egress through the proxy, `/data` volume permissions: NOT verified (no Docker daemon).
+
+## Phase 6 (review packages)
+- [x] Disabled by default; ADMIN only; enable, disable and create need CSRF + fresh single-use reauth + exact phrase; refusals audited.
+- [x] Typed export views (no free text) plus a scanner over the finished bytes, re-run on every verification.
+- [x] Deterministic ZIP; allowed paths only; no symlinks, encryption or duplicates; zip-bomb and size limits; strict manifest schema; SHA-256 per file and per package.
+- [x] Stored outside the web root under a generated name, read-only files; `app` mounts the volume read-only; no static or GET route.
+- [x] Download is an ADMIN POST with CSRF and Origin check, verified against the exact bytes served, attachment + nosniff + no-store + sandbox CSP; package content is never rendered.
+- [x] Creation changes no bot, pair, risk, order, ledger, config or gate state (before/after table hashes).
+- [x] Retention cleanup and every action audited; metrics are aggregate counts only.
+- [ ] Shared volume between `batch` (rw) and `app` (ro) in real containers: NOT verified (no Docker daemon).

@@ -161,6 +161,20 @@ Implemented: Decimal-safe money helpers, candle validation and data-quality even
 - Not verified: any real Coinbase response (network denied; all fixtures synthetic, AS-C1), Docker start of `batch`/`egress-proxy`/`pairs` (no Docker daemon), `/data` volume ownership in a container, `docker compose config`, Grafana.
 - review: SELF
 
+### DEC-017: Phase 6 read-only review packages (2026-09-29)
+Implemented: disabled-by-default feature flag, ADMIN-only enable/disable/create with CSRF + fresh reauth + exact phrases, typed export views, sanitizer and scanner, deterministic ZIP builder with manifest/README/summary/JSONL/CSV/checksums/prompt, integrity verifier, protected POST download, retention cleanup, package dashboard, audit events for every action and refusal, aggregate metrics, host CLI (`review build|verify|cleanup|list`). No external LLM call, no proposal import, no bot mutation. Choices and deviations:
+- **Numbering.** The request calls this Phase 6; the approved baseline calls it Phase 7 (baseline Phase 6 = reports/dashboard integration, delivered inside Phase 5). Scope followed the request.
+- **Asynchronous creation, as the baseline's lifecycle (4.3) says.** The web tier records a REQUESTED row; the host builds it in `batch`. There is no worker, so `review build` is run by an operator (or a schedule), as with the other host commands.
+- **Disable needs the full chain** (CSRF + fresh reauth + `DISABLE READ-ONLY REVIEW PACKAGES`), stricter than the baseline's CSRF-only F2, per the request.
+- **Not built:** `DELETE REVIEW PACKAGE <ID>` (baseline P7): retention expires packages and keeps a tombstone; the request did not ask for delete. Audit-debt guard on enabling (no audit-debt concept exists yet). Risk-event, order-intent and reconciliation exports (those tables do not exist; the manifest lists them as not available).
+- **New web-writable tables.** `td_app` may insert a REQUESTED row, change the feature flag (three columns) and mark a READY package CORRUPT; `td_ctl` performs all other transitions. A trigger enforces the state machine per actor class, immutability of request fields, single flight, 10 retained, 3 per hour, and "requests only while enabled".
+- **Storage.** New `review_packages` volume: `batch` read-write, `app` read-only (`verify_security_config.py` checks it); files 0440, atomic, generated names not derivable from the package id; `TD_REVIEW_DIR` refuses web-root-like paths. The web tier now reads package files (download and verify) but imports no market/paper/exchange code.
+- **Download** is a POST (baseline 4.3), verified on the exact bytes served; a failed check marks the package CORRUPT and serves nothing. Served as an opaque attachment with `nosniff`, `no-store` and a sandbox CSP.
+- **Prompt.** The review prompt asks for a written advisory reply, not proposal JSON, because proposal import (baseline Phase 8) does not exist; the strict format belongs there.
+- **Metrics extensions:** five `tradingdots_review_*` families, aggregate only.
+- **Defects found and fixed while testing:** scope lists containing unknown or repeated items passed validation; a bit flip inside a deflate stream, and corrupted ZIP headers, raised uncaught exceptions during verification (found by fuzzing every byte); `README`/tests needed key-marker strings built by concatenation to satisfy the repository secret scan.
+- review: SELF. **No independent security review has been performed.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

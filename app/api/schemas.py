@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 from uuid import UUID
 
@@ -69,3 +70,47 @@ class PairReauthForm(_Form):
 class PairConfirmForm(_Form):
     version: int = Field(ge=1, le=2**31 - 1)
     confirmation: str = Field(max_length=128)
+
+
+# ---------------------------------------------------------------- review packages (Phase 6)
+_SCOPE_CHOICES = Literal[
+    "backtests", "paper", "pairs", "data_quality", "grid_plans", "audit_summary"
+]
+
+
+class ReviewEnableFields(_Form):
+    retention_days: int = Field(ge=1, le=90)
+
+
+class ReviewEnableReauth(ReviewEnableFields):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class ReviewEnableConfirm(ReviewEnableFields):
+    confirmation: str = Field(max_length=128)
+
+
+class ReviewPlainReauth(_Form):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class ReviewPlainConfirm(_Form):
+    confirmation: str = Field(max_length=128)
+
+
+class ReviewRequestFields(_Form):
+    period_start: date
+    period_end: date
+    scope: list[_SCOPE_CHOICES] = Field(min_length=1, max_length=6)
+
+
+class ReviewRequestReauth(ReviewRequestFields):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class ReviewRequestConfirm(ReviewRequestFields):
+    confirmation: str = Field(max_length=128)
+
+
+class ReviewPackageAction(_Form):
+    pass

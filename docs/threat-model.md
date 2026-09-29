@@ -63,3 +63,15 @@ Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange fail
 | Overfitting via parameter search | Walk-forward with out-of-sample reporting; tiny grid | Backtests remain optimistic in ways not modelled |
 | Runaway paper capital | Trader invariants plus DB trigger constants | None known |
 | Fee assumptions wrong | Attested fees required; stress scenario at 0.6% | Attestation is a human claim |
+
+## Phase 6 additions (review packages)
+| Threat | Control | Residual |
+|---|---|---|
+| Secret or private data leaks into a package | Typed rows (no free text), allow-listed SQL, aggregated audit data, scanner on the bytes at build and at every verify | A future column added to an export schema without review |
+| Prompt injection through package content | Contents are typed numbers, codes and ids; the prompt template labels everything untrusted data and forbids commands; the package cannot act | A person pasting a package into a tool that can act |
+| Tampered or swapped package file | Row cross-check (SHA-256, manifest hash, period, scope), per-file checksums, allowed paths, read-only files, verified-before-serve on the same bytes | Whoever can rewrite both the database row and the file |
+| Path traversal, symlink or zip bomb in a package | Path allowlist, symlink/encryption refusal, size and expansion limits, no extraction to disk | None known |
+| Download used to read arbitrary files | Storage names validated (`uuid.zip`), opened with no-follow, no path input from the user | None known |
+| Unauthorised or CSRF-driven enable/download | ADMIN permission, CSRF and Origin check on POST, single-use reauth and exact phrases, audit of every refusal | A compromised ADMIN session that also knows the password |
+| Package feature used to change bot state | Review tables reference only `users`; web role cannot build; a test hashes all bot/pair/paper tables around every action | None known |
+| Package build starves the host | One package at a time, 10 retained, 3 per hour, size and row caps, retention cleanup | None known |

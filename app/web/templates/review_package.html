@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+{% set p = view.package %}
+<h1>Review package <code>{{ p.id[:8] }}</code> <span class="badge">{{ p.state }}</span></h1>
+<p><a href="/review">All review packages</a></p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice"><strong>{{ view.cannot_trade }}</strong></p>
+<dl>
+  <dt>Period</dt><dd>{{ p.period }}</dd>
+  <dt>Scope</dt><dd>{{ p.scope | join(", ") }}</dd>
+  <dt>Requested</dt><dd>{{ p.requested }}</dd>
+  <dt>Expires</dt><dd>{{ p.expires }}</dd>
+  <dt>Size</dt><dd>{{ p.size }}</dd>
+  <dt>SHA-256 of the package</dt><dd><code>{{ p.sha }}</code></dd>
+  {% if p.failure %}<dt>Failure code</dt><dd><code>{{ p.failure }}</code></dd>{% endif %}
+</dl>
+{% if p.can_use %}
+<form method="post" action="/review/packages/{{ p.id }}/verify" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+  <button type="submit">Verify integrity</button>
+</form>
+<form method="post" action="/review/packages/{{ p.id }}/download" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+  <button type="submit">Download (ZIP)</button>
+</form>
+<p>The download is verified first. It is a file to save, never a page to open. Checksums show integrity, not authenticity.</p>
+{% elif p.state == "READY" %}
+<p>Downloads are blocked while review packages are disabled.</p>
+{% elif p.content_removed %}
+<p>The content was removed after retention. The record is kept.</p>
+{% endif %}
+{% if p.files %}
+<h2>Files</h2>
+<div class="table-wrap"><table>
+  <caption class="visually-hidden">Files in the package</caption>
+  <thead><tr><th scope="col">Path</th><th scope="col">Bytes</th><th scope="col">SHA-256 (start)</th></tr></thead>
+  <tbody>{% for path, size, sha in p.files %}<tr><td><code>{{ path }}</code></td><td>{{ size }}</td><td><code>{{ sha }}</code></td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% endblock %}

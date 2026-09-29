@@ -44,6 +44,19 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("GET", "/pairs/{pair_id}/{action}/request"): "manage_pairs",
     ("POST", "/pairs/{pair_id}/{action}/reauth"): "manage_pairs",
     ("POST", "/pairs/{pair_id}/{action}/confirm"): "manage_pairs",
+    ("GET", "/review"): "manage_review_packages",
+    ("GET", "/review/enable/request"): "manage_review_packages",
+    ("POST", "/review/enable/reauth"): "manage_review_packages",
+    ("POST", "/review/enable/confirm"): "manage_review_packages",
+    ("GET", "/review/disable/request"): "manage_review_packages",
+    ("POST", "/review/disable/reauth"): "manage_review_packages",
+    ("POST", "/review/disable/confirm"): "manage_review_packages",
+    ("GET", "/review/packages/create/request"): "manage_review_packages",
+    ("POST", "/review/packages/create/reauth"): "manage_review_packages",
+    ("POST", "/review/packages/create/confirm"): "manage_review_packages",
+    ("GET", "/review/packages/{package_id}"): "manage_review_packages",
+    ("POST", "/review/packages/{package_id}/verify"): "manage_review_packages",
+    ("POST", "/review/packages/{package_id}/download"): "manage_review_packages",
 }
 PUBLIC = {key for key, value in EXPECTED.items() if value == "public"}
 ADMIN_ONLY = {"/audit", "/security/users/revoke-sessions"}
@@ -79,7 +92,9 @@ def test_anonymous_visitors_cannot_use_any_protected_route(app: Any, client: Tes
     for (method, template), level in EXPECTED.items():
         if level == "public":
             continue
-        path = template.format(pair_id=uuid4(), report_id=uuid4(), action="archive")
+        path = template.format(
+            pair_id=uuid4(), report_id=uuid4(), package_id=uuid4(), action="archive"
+        )
         if method == "GET":
             response = client.get(path, follow_redirects=False)
             assert response.status_code == 303 and response.headers["location"] == "/login", path
@@ -305,8 +320,8 @@ def test_no_page_exposes_a_bot_pair_exchange_or_config_control(admin_client: Tes
             "pause bot",
         ):
             assert word not in body
-    # Phase 4 added /pairs; the other control surfaces still do not exist.
-    for path in ("/bot", "/orders", "/exchange", "/config", "/review"):
+    # Phase 4 added /pairs and Phase 6 /review (ADMIN only, no bot control); the rest do not exist.
+    for path in ("/bot", "/orders", "/exchange", "/config"):
         assert admin_client.get(path).status_code == 404
         assert admin_client.post(path, data={"csrf_token": "x"}).status_code in (403, 404, 405)
 

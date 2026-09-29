@@ -19,6 +19,7 @@ class Permission(StrEnum):
     VIEW_PAIRS = "view_pairs"
     MANAGE_PAIRS = "manage_pairs"
     VIEW_REPORTS = "view_reports"
+    MANAGE_REVIEW_PACKAGES = "manage_review_packages"
 
 
 _VIEWER = frozenset(
@@ -39,6 +40,7 @@ _ADMIN = _VIEWER | frozenset(
         Permission.REVOKE_USER_SESSIONS,
         Permission.VIEW_AUDIT,
         Permission.MANAGE_PAIRS,
+        Permission.MANAGE_REVIEW_PACKAGES,
     }
 )
 

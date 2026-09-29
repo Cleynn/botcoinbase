@@ -8,3 +8,6 @@ The pair machine and its complete transition table are in `docs/pair-management.
 
 ## Paper trader phases (Phase 5)
 `IDLE -> ACTIVE` (a grid was accepted) `-> STOPPED` (close beyond the band by the breakout buffer; orders cancelled, inventory kept) or `-> HALTED` (drawdown past the stop ratio; cleared only by `paper start --acknowledge-halt`). The paper session is `PAUSED <-> RUNNING`; the database allows paper orders only while it is RUNNING and only for the PAPER_ACTIVE pair. Order states: OPEN -> FILLED | CANCELLED | REJECTED (closed orders never change).
+
+## Review package lifecycle (Phase 6)
+Feature flag: DISABLED (default) <-> ENABLED, ADMIN full chain both ways. Package: `REQUESTED -> GENERATING -> READY | FAILED`; `READY -> CORRUPT` (web or host, on a failed verification) or `EXPIRED` (host, retention); `CORRUPT | FAILED -> EXPIRED`. `EXPIRED` is terminal and keeps a tombstone row after the content is removed. The database trigger allows only these transitions, only for the listed actor class (web may only do `READY -> CORRUPT`), keeps the request fields immutable, forbids DELETE/TRUNCATE, and enforces one waiting-or-building package, at most 10 retained, at most 3 requests per hour, and that requests exist only while the feature is enabled.

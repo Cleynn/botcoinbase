@@ -36,6 +36,7 @@
         <li><span class="nav-later" aria-disabled="true">{{ item }} <small>(not available yet)</small></span></li>
         {% endfor %}
         {% if auth.is_admin %}
+        <li><a href="/review" {% if active|default("") == "review" %}aria-current="page"{% endif %}>Review packages</a></li>
         <li><a href="/audit" {% if active|default("") == "audit" %}aria-current="page"{% endif %}>Audit</a></li>
         {% endif %}
         <li><a href="/security" {% if active|default("") == "security" %}aria-current="page"{% endif %}>Security</a></li>

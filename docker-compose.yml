@@ -85,6 +85,8 @@ services:
       TD_METRICS_BIND: 172.29.20.10
     read_only: true
     tmpfs: ["/tmp:size=16m"]
+    volumes:
+      - review_packages:/review:ro   # protected package downloads read from here, never write
     networks:
       edge_app: {}
       backend: {}
@@ -232,6 +234,7 @@ services:
   #   docker compose --profile discovery run --rm batch market snapshot --product BTC-USDC
   #   docker compose --profile discovery run --rm batch backtest run --snapshot <id>
   #   docker compose --profile discovery run --rm batch paper status
+  #   docker compose --profile discovery run --rm batch review build|verify --all|cleanup
   batch:
     <<: *hardening
     restart: "no"
@@ -253,6 +256,7 @@ services:
     tmpfs: ["/tmp:size=64m"]
     volumes:
       - datasets:/data
+      - review_packages:/review   # review packages (read-write here only)
     networks: [backend, egress_int]
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -425,3 +429,4 @@ volumes:
   prometheus_data: {}
   grafana_data: {}
   datasets: {}                       # frozen Parquet snapshots (batch service only)
+  review_packages: {}                # review package ZIPs: batch writes, app reads (read-only mount)

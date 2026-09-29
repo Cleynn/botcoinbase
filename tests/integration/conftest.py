@@ -67,3 +67,26 @@ def mkt(
         source=install(coinbase),
         data_dir=data_dir,
     )
+
+
+# ---------------------------------------------------------------- Phase 6: review packages
+@pytest.fixture
+def review(
+    settings: Settings,
+    storage: Storage,
+    ctl_storage: Storage,
+    clock: FakeClock,
+    admin: Any,
+    tmp_path: Path,
+) -> Any:
+    from tests.integration.review_env import build_review_env
+
+    directory = tmp_path / "review"
+    return build_review_env(
+        storage=storage,
+        ctl_storage=ctl_storage,
+        clock=clock,
+        settings=settings,
+        admin=admin,
+        review_dir=directory,
+    )
