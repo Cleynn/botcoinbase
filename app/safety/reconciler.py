@@ -21,6 +21,7 @@ id), which the database also enforces.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -43,6 +44,7 @@ from app.storage.database import Storage
 from app.storage.repositories import Repos
 from app.storage.safety_repositories import AttemptRow, FillRow, FindingRow, IntentRow
 
+logger = logging.getLogger("app")
 LOOKBACK: Final = timedelta(hours=24)
 MARGIN: Final = timedelta(minutes=5)
 TERMINAL_STATES: Final = ("FILLED", "CANCELLED", "EXPIRED", "REJECTED", "ABSENT")
@@ -195,7 +197,8 @@ class Reconciler:
             return self._fail(run_id, trigger, started, "UNEXPECTED_RESPONSE")
         try:
             return self._compare(run_id, trigger, started, orders, fills, balances, hints_from)
-        except Exception:  # noqa: BLE001  (an unexpected error must never look like a clean run)
+        except Exception as exc:  # noqa: BLE001  (an unexpected error must never look clean)
+            logger.error("reconciliation failed internally: %s", type(exc).__name__)
             return self._fail(run_id, trigger, started, "INTERNAL_ERROR")
 
     def _compare(
@@ -472,6 +475,8 @@ class Reconciler:
                 or attempt.submitting_at is None
             ):
                 continue
+            if repos.safety.client_id_ever_named(client_id):
+                continue  # a run once saw this id: absence is not proven
             proofs = repos.safety.ok_runs_started_after(attempt.submitting_at + window)
             if proofs >= need:
                 if self._move(repos, attempt, "ABSENT", self._clock.now(), None):

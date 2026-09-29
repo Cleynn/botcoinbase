@@ -5,10 +5,11 @@ test injects them). Nothing here talks to any network."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.auth.audit import AuditWriter
 from app.config import Settings
@@ -29,6 +30,7 @@ from app.safety.recovery import RecoveryResult, RecoveryService
 from app.safety.retry import RetryPolicy
 from app.safety.types import OrderProposal
 from app.storage.database import Storage
+from app.storage.safety_repositories import DecisionRow, IntentRow
 from tests.conftest import Account, FakeClock
 from tests.pair_env import Reauth
 
@@ -113,6 +115,78 @@ class SafetyEnv:
 
     def book(self, spread_bps: str = "10", age: int = 5) -> BookFacts:
         return BookFacts(Decimal(spread_bps), age)
+
+    # ---------------------------------------------------------------- direct rows (host role)
+    def make_intent(
+        self, *, side: str = "BUY", price: str = "100", qty: str = "0.1", key: str | None = None
+    ) -> IntentRow:
+        row = IntentRow(
+            id=uuid4(),
+            intent_key=key or uuid4().hex + uuid4().hex,
+            venue="FAKE",
+            pair_id=self.pair_id,
+            product_id="BTC-USDC",
+            side=side,
+            order_type="limit_limit_gtc",
+            post_only=True,
+            price=Decimal(price),
+            base_qty=Decimal(qty),
+            expected_cycle_return=Decimal("0.03"),
+            source="test",
+            created_at=self.clock.now(),
+        )
+        with self.ctl.tx() as repos:
+            repos.safety.add_intent(row)
+        return row
+
+    def allow(self, intent_id: UUID, *, decision: str = "ALLOW") -> DecisionRow:
+        now = self.clock.now()
+        row = DecisionRow(
+            id=uuid4(),
+            intent_id=intent_id,
+            decision=decision,
+            reasons=() if decision == "ALLOW" else ("KILL_SWITCH_ACTIVE",),
+            inputs_hash="0" * 64,
+            decided_at=now,
+            expires_at=now + timedelta(seconds=30),
+            consumed_at=None,
+        )
+        with self.ctl.tx() as repos:
+            repos.safety.add_decision(row)
+        return row
+
+    def new_attempt(self, *, intent: IntentRow | None = None, no: int = 1) -> UUID:
+        """An AUTHORIZED attempt (the bot must be RUNNING with a fresh reconciliation)."""
+        intent = intent or self.make_intent()
+        decision = self.allow(intent.id)
+        attempt_id = uuid4()
+        with self.ctl.tx() as repos:
+            repos.safety.add_attempt(
+                attempt_id=attempt_id,
+                intent_id=intent.id,
+                attempt_no=no,
+                client_order_id=uuid4(),
+                decision_id=decision.id,
+                boot_id=self.boot_id,
+                now=self.clock.now(),
+            )
+        return attempt_id
+
+    def walk(self, attempt_id: UUID, *states: str) -> None:
+        """Move an attempt through legal states (SUBMITTING sets the submit mark first)."""
+        for state in states:
+            with self.ctl.tx() as repos:
+                if state == "SUBMITTING":
+                    assert repos.safety.mark_submitting(attempt_id, self.clock.now())
+                else:
+                    row = repos.safety.attempt(attempt_id)
+                    assert row is not None
+                    code = "TEST_REJECT" if state == "REJECTED" else None
+                    assert repos.safety.transition(
+                        attempt_id, (row.state,), state, self.clock.now(),
+                        exchange_order_id="ord-test-0001" if state == "WORKING" else None,
+                        failure_code=code,
+                    )  # fmt: skip
 
     def control_row(self) -> Any:
         with self.ctl.tx() as repos:

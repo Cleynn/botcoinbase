@@ -466,6 +466,14 @@ BEGIN
         RAISE EXCEPTION 'filled quantity never decreases' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
     IF NEW.state = OLD.state THEN
+        -- a settled attempt keeps its outcome; a late fill may still raise the filled quantity
+        IF OLD.state IN ('FILLED', 'CANCELLED', 'EXPIRED', 'REJECTED', 'ABSENT')
+           AND NEW.failure_code IS DISTINCT FROM OLD.failure_code THEN
+            RAISE EXCEPTION 'a settled attempt keeps its outcome' USING ERRCODE = 'integrity_constraint_violation';
+        END IF;
+        IF OLD.state IN ('REJECTED', 'ABSENT') AND NEW.filled_qty <> OLD.filled_qty THEN
+            RAISE EXCEPTION 'a rejected or absent attempt has no fills' USING ERRCODE = 'integrity_constraint_violation';
+        END IF;
         RETURN NEW;
     END IF;
     IF NOT (

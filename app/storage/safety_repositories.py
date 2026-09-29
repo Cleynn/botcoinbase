@@ -318,6 +318,13 @@ class SafetyRepository:
         ).fetchone()
         return int(row["n"]) if row else 0
 
+    def client_id_ever_named(self, client_order_id: str | UUID) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM reconciliation_findings WHERE subject = %s LIMIT 1",
+            (str(client_order_id),),
+        ).fetchone()
+        return row is not None
+
     def consecutive_bad_runs(self, venue: str, limit: int = 10) -> int:
         n = 0
         for row in self._conn.execute(
