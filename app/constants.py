@@ -16,6 +16,8 @@ LIVE_TRADING_STATUS: Final = "BLOCKED"
 POLICY_TOTAL_CAPITAL: Final = Decimal("50")
 POLICY_MIN_RESERVE: Final = Decimal("15")
 POLICY_MAX_DEPLOYMENT: Final = Decimal("35")
+# One order never exceeds this notional (35 / 3 levels, rounded up). Config may only lower it.
+POLICY_MAX_ORDER_NOTIONAL: Final = Decimal("12")
 GRID_MIN_LEVELS: Final = 3
 GRID_MAX_LEVELS: Final = 5
 MAX_ACTIVE_PAIRS: Final = 1

@@ -61,6 +61,9 @@ select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
 "app/proposals/policy.py" = ["E501", "S105"]
 "app/proposals/risk.py" = ["E501"]
 "app/batch_cli.py" = ["E501", "T201"]
+# Fixed vocabularies of reason codes and blocker sentences.
+"app/safety/types.py" = ["E501"]
+"app/safety/live_gate.py" = ["E501"]
 # Verdict names PASS/FAIL are not credentials; check messages are long human-readable sentences.
 "app/pairs/validation.py" = ["S105", "E501"]
 # SQL literals in the database-level tests are easier to read on one line.

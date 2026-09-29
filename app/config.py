@@ -427,6 +427,41 @@ class ProposalSettings(BaseModel):
         return value
 
 
+class SafetySettings(BaseModel):
+    """Thresholds for the risk engine, breaker, reconciliation and retries. Every bound may only
+    tighten the fixed ceilings in `app.constants`; none of them can enable live trading."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    market_data_max_age_seconds: int = Field(default=900, ge=60, le=3600)
+    metadata_max_age_seconds: int = Field(default=3600, ge=60, le=86400)
+    book_max_age_seconds: int = Field(default=60, ge=5, le=300)
+    max_spread_bps: Decimal = Field(default=Decimal("30"), gt=0, le=Decimal("100"))
+    max_price_deviation_ratio: Decimal = Field(default=Decimal("0.05"), gt=0, le=Decimal("0.25"))
+    reconcile_max_age_seconds: int = Field(default=300, ge=30, le=300)
+    api_failure_window_seconds: int = Field(default=300, ge=30, le=3600)
+    api_failure_threshold: int = Field(default=5, ge=1, le=50)
+    breaker_cooldown_seconds: int = Field(default=900, ge=60, le=86400)
+    daily_loss_limit: Decimal = Field(default=Decimal("3"), gt=0, le=Decimal("10"))
+    max_drawdown_ratio: Decimal = Field(default=Decimal("0.10"), gt=0, le=Decimal("0.20"))
+    per_order_cap: Decimal = Field(default=constants.POLICY_MAX_ORDER_NOTIONAL, gt=0)
+    max_intents_per_minute: int = Field(default=10, ge=1, le=60)
+    max_reject_streak: int = Field(default=5, ge=1, le=50)
+    retry_max_attempts: int = Field(default=3, ge=1, le=5)
+    retry_base_seconds: Decimal = Field(default=Decimal("0.5"), gt=0, le=Decimal("10"))
+    retry_cap_seconds: Decimal = Field(default=Decimal("8"), gt=0, le=Decimal("60"))
+    absence_window_seconds: int = Field(default=120, ge=30, le=3600)
+    absence_min_reconciliations: int = Field(default=2, ge=2, le=10)
+    ws_max_silence_seconds: int = Field(default=30, ge=5, le=300)
+
+    @field_validator("per_order_cap")
+    @classmethod
+    def _cap(cls, value: Decimal) -> Decimal:
+        if value > constants.POLICY_MAX_ORDER_NOTIONAL:
+            raise ValueError("per_order_cap may only tighten the policy ceiling")
+        return value
+
+
 class PairPolicy(BaseModel):
     """Static pair/capital policy. Values may only tighten the hard ceilings in app.constants."""
 
@@ -494,6 +529,7 @@ class Settings(BaseModel):
     data: DataSettings = DataSettings()
     review: ReviewSettings = ReviewSettings()
     proposals: ProposalSettings = ProposalSettings()
+    safety: SafetySettings = SafetySettings()
     pair_policy: PairPolicy
 
     @field_validator("trusted_proxies")
