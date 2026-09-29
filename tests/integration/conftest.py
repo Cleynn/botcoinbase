@@ -121,3 +121,45 @@ def prop(
         review=review,
         package=package,
     )
+
+
+# ---------------------------------------------------------------- Phase 8: safety machinery
+@pytest.fixture
+def safe(
+    mkt: Market,
+    storage: Storage,
+    ctl_storage: Storage,
+    clock: FakeClock,
+    coinbase: Any,
+    admin: Any,
+) -> Any:
+    """An active PAPER pair with SYNTHETIC candles plus the scripted FAKE exchange."""
+    from app.domain.pairs import PairAction
+    from app.paper.gate import PaperRuntimeGate
+    from tests.integration.safety_env import build_safety_env
+    from tests.pair_env import build_env
+
+    settings = mkt.settings.model_copy(update={"mode": "PAPER"})
+    mkt.settings = settings
+    env = build_env(
+        storage=storage,
+        ctl_storage=ctl_storage,
+        clock=clock,
+        settings=settings,
+        coinbase=coinbase,
+        admin=admin,
+        gate=PaperRuntimeGate("PAPER"),
+    )
+    coinbase.range_source = None
+    pair_id = env.eligible("BTC-USDC")
+    assert env.act(pair_id, PairAction.ACTIVATE).kind == "ok"
+    coinbase.range_source = mkt.source
+    mkt.imported()
+    return build_safety_env(
+        settings=settings,
+        storage=storage,
+        ctl_storage=ctl_storage,
+        clock=clock,
+        admin=admin,
+        pair_id=pair_id,
+    )

@@ -34,7 +34,7 @@ CREATE TABLE bot_control (
     CONSTRAINT bot_running_is_safe CHECK (
         bot_state <> 'RUNNING' OR (kill_switch = 'INACTIVE' AND breaker_state = 'CLOSED' AND recovery_state = 'COMPLETE'))
 );
-INSERT INTO bot_control (id, updated_at) VALUES (true, now());
+INSERT INTO bot_control (id, updated_at) VALUES (true, 'epoch');
 
 CREATE TABLE bot_control_history (
     id             bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -52,6 +52,7 @@ CREATE TABLE bot_control_history (
 -- ------------------------------------------------------------------ reconciliation (host writes)
 CREATE TABLE reconciliation_runs (
     id            uuid        PRIMARY KEY,
+    seq           bigint      GENERATED ALWAYS AS IDENTITY UNIQUE,
     venue         text        NOT NULL CHECK (venue IN ('PAPER', 'FAKE')),
     trigger       text        NOT NULL CHECK (trigger IN ('STARTUP', 'SCHEDULED', 'MANUAL', 'PRE_RESUME', 'AFTER_AMBIGUITY', 'WEBSOCKET')),
     started_at    timestamptz NOT NULL,
@@ -67,7 +68,7 @@ CREATE TABLE reconciliation_runs (
     CONSTRAINT recon_failed_has_code CHECK (outcome <> 'FAILED' OR failure_code IS NOT NULL),
     CONSTRAINT recon_mismatch_has_findings CHECK (outcome <> 'MISMATCH' OR findings_count > 0)
 );
-CREATE INDEX reconciliation_runs_recent_idx ON reconciliation_runs (finished_at DESC);
+CREATE INDEX reconciliation_runs_recent_idx ON reconciliation_runs (seq DESC);
 
 CREATE TABLE reconciliation_findings (
     id        bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -215,7 +216,7 @@ $fn$
     SELECT COALESCE((
         SELECT outcome = 'OK' AND finished_at <= p_now AND finished_at >= p_now - interval '300 seconds'
                AND (p_after IS NULL OR finished_at > p_after)
-        FROM reconciliation_runs ORDER BY finished_at DESC, started_at DESC LIMIT 1), false)
+        FROM reconciliation_runs ORDER BY seq DESC LIMIT 1), false)
 $fn$;
 
 CREATE FUNCTION bot_control_guard() RETURNS trigger

@@ -232,15 +232,18 @@ class SafetyRepository:
 
     def latest_run(self, venue: str | None = None) -> RunRow | None:
         row = self._conn.execute(
-            "SELECT * FROM reconciliation_runs WHERE (%s::text IS NULL OR venue = %s) "
-            "ORDER BY finished_at DESC, started_at DESC LIMIT 1",
+            "SELECT id, venue, trigger, started_at, finished_at, outcome, orders_seen, fills_seen, "
+            "balances_seen, findings_count, failure_code FROM reconciliation_runs "
+            "WHERE (%s::text IS NULL OR venue = %s) ORDER BY seq DESC LIMIT 1",
             (venue, venue),
         ).fetchone()
         return RunRow(**row) if row else None
 
     def recent_runs(self, limit: int = 10) -> list[RunRow]:
         rows = self._conn.execute(
-            "SELECT * FROM reconciliation_runs ORDER BY finished_at DESC, started_at DESC LIMIT %s",
+            "SELECT id, venue, trigger, started_at, finished_at, outcome, orders_seen, fills_seen, "
+            "balances_seen, findings_count, failure_code FROM reconciliation_runs "
+            "ORDER BY seq DESC LIMIT %s",
             (limit,),
         ).fetchall()
         return [RunRow(**r) for r in rows]
@@ -262,8 +265,7 @@ class SafetyRepository:
     def consecutive_bad_runs(self, venue: str, limit: int = 10) -> int:
         n = 0
         for row in self._conn.execute(
-            "SELECT outcome FROM reconciliation_runs WHERE venue = %s "
-            "ORDER BY finished_at DESC, started_at DESC LIMIT %s",
+            "SELECT outcome FROM reconciliation_runs WHERE venue = %s ORDER BY seq DESC LIMIT %s",
             (venue, limit),
         ).fetchall():
             if row["outcome"] == "OK":
