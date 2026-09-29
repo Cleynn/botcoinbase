@@ -88,3 +88,9 @@ dd code, td code { overflow-wrap: anywhere; word-break: break-all; }
 .badge-untrusted { background: var(--warn-bg, #fff3cd); color: var(--warn-fg, #5c4400); border: 1px solid currentColor; }
 pre.untrusted { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; padding: .5rem .75rem; margin: .25rem 0 1rem; }
 textarea { max-width: 100%; }
+
+/* Long codes, timestamps and reasons in lists must wrap instead of widening the page (Bot page). */
+main li,
+main dd {
+  overflow-wrap: anywhere;
+}
