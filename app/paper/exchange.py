@@ -192,6 +192,11 @@ class PaperExchange:
             session = repos.paper.session(for_update=True)
             if session.state != "PAUSED":
                 raise PaperError("ALREADY_RUNNING")
+            control = repos.safety.control()
+            if control.kill_switch == "ACTIVE":
+                raise PaperError("KILL_SWITCH_ACTIVE")
+            if control.breaker_state == "OPEN":
+                raise PaperError("BREAKER_OPEN")
             if session.phase == "HALTED" and not acknowledge_halt:
                 raise PaperError("HALTED_BY_DRAWDOWN")  # a halt is never cleared silently
             active = repos.pairs.in_states((PairState.PAPER_ACTIVE,))
@@ -275,6 +280,28 @@ class PaperExchange:
             )
         return cancelled
 
+    def cancel_for_safety(self, reason: str) -> int:
+        """Cancel every open paper order and pause the paper session. Never sells inventory."""
+        now = self._clock.now()
+        with self._storage.tx() as repos:
+            session = repos.paper.session(for_update=True)
+            cancelled = self._cancel_all_open(repos, now)
+            if session.state == "RUNNING":
+                repos.paper.update_session(now, state="PAUSED")
+            self._audit.record(
+                repos,
+                AuditEventType.PAPER_STOPPED,
+                AuditResult.SUCCESS,
+                actor=HOST_CLI_ACTOR,
+                target_type="pair",
+                target_id=session.pair_id,
+                reason=reason[:60],
+                client_tag=HOST_ACTOR.client_tag,
+                request_id=HOST_ACTOR.request_id,
+                detail={"cancelled": cancelled},
+            )
+        return cancelled
+
     def _cancel_all_open(self, repos: Repos, now: Any) -> int:
         n = 0
         for row in repos.paper.open_orders():
@@ -292,6 +319,24 @@ class PaperExchange:
             session = repos.paper.session(for_update=True)
             if session.state != "RUNNING" or session.pair_id is None:
                 raise PaperError("NOT_RUNNING")
+            control = repos.safety.control()
+            if control.kill_switch == "ACTIVE" or control.breaker_state == "OPEN":
+                reason = "KILL_SWITCH_ACTIVE" if control.kill_switch == "ACTIVE" else "BREAKER_OPEN"
+                cancelled = self._cancel_all_open(repos, now)  # cancels only; never sells
+                repos.paper.update_session(now, state="PAUSED")
+                self._audit.record(
+                    repos,
+                    AuditEventType.PAPER_STOPPED,
+                    AuditResult.FAILURE,
+                    actor=HOST_CLI_ACTOR,
+                    target_type="pair",
+                    target_id=session.pair_id,
+                    reason=reason,
+                    client_tag=HOST_ACTOR.client_tag,
+                    request_id=HOST_ACTOR.request_id,
+                    detail={"cancelled": cancelled},
+                )
+                return StepResult(0, 0, 0, cancelled, session.phase, session.last_candle_start)
             pair = repos.pairs.get(session.pair_id)
             if pair is None or pair.state is not PairState.PAPER_ACTIVE:
                 cancelled = self._cancel_all_open(repos, now)

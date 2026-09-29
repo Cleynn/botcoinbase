@@ -252,6 +252,13 @@ class SafetyRepository:
         ).fetchall()
         return [FindingRow(**r) for r in rows]
 
+    def ok_runs_started_after(self, moment: datetime) -> int:
+        row = self._conn.execute(
+            "SELECT count(*) AS n FROM reconciliation_runs WHERE outcome = 'OK' AND started_at >= %s",
+            (moment,),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
     def consecutive_bad_runs(self, venue: str, limit: int = 10) -> int:
         n = 0
         for row in self._conn.execute(
@@ -412,6 +419,13 @@ class SafetyRepository:
             "SELECT state, count(*) AS n FROM order_attempts GROUP BY state"
         ).fetchall()
         return {r["state"]: int(r["n"]) for r in rows}
+
+    def recent_attempt_states(self, limit: int) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT state FROM order_attempts ORDER BY created_at DESC, attempt_no DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+        return [r["state"] for r in rows]
 
     def mark_submitting(self, attempt_id: UUID, now: datetime) -> bool:
         """Compare-and-set AUTHORIZED -> SUBMITTING, committed BEFORE any exchange I/O."""

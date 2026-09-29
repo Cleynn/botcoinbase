@@ -21,6 +21,8 @@ class Permission(StrEnum):
     VIEW_REPORTS = "view_reports"
     MANAGE_REVIEW_PACKAGES = "manage_review_packages"
     MANAGE_PROPOSALS = "manage_proposals"
+    VIEW_BOT = "view_bot"
+    MANAGE_BOT = "manage_bot"
 
 
 _VIEWER = frozenset(
@@ -33,6 +35,7 @@ _VIEWER = frozenset(
         Permission.LOGOUT,
         Permission.VIEW_PAIRS,
         Permission.VIEW_REPORTS,
+        Permission.VIEW_BOT,
     }
 )
 _ADMIN = _VIEWER | frozenset(
@@ -43,6 +46,7 @@ _ADMIN = _VIEWER | frozenset(
         Permission.MANAGE_PAIRS,
         Permission.MANAGE_REVIEW_PACKAGES,
         Permission.MANAGE_PROPOSALS,
+        Permission.MANAGE_BOT,
     }
 )
 
