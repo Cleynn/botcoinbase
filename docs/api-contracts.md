@@ -57,3 +57,17 @@ with strict forms (unknown fields rejected). A `version` field carries the pair 
 New audit events: `product.discovered`, `pair.proposed`, `pair.validation_started`, `pair.research_only`, `pair.paper_eligible`,
 `pair.eligibility_expired`, `pair.activated_paper`, `pair.paused`, `pair.resumed_paper`, `pair.deactivated`, `pair.disabled`,
 `pair.reenabled`, `pair.archived`, `pair.transition_denied`.
+
+## Reports (Phase 5)
+All routes are GET, read-only, permission `view_reports` (ADMIN and VIEWER). No write route exists.
+
+| Method | Path | Result | Errors |
+|---|---|---|---|
+| GET | `/reports?page=N` | 200 list, newest first, each row labelled BACKTEST or PAPER | 400/422 bad page |
+| GET | `/reports/{id}` | 200 detail page (all text escaped) | 400/404 |
+| GET | `/reports/{id}/json` | 200 `text/plain`, `Content-Disposition: attachment`, canonical JSON | 404 |
+| GET | `/reports/{id}/md` | 200 `text/plain`, attachment, Markdown | 404 |
+
+The overview gains read-only market rows (latest report, data freshness) marked BACKTEST/PAPER.
+Audit events added: `market.ingested`, `market.snapshot_created`, `backtest.completed`, `report.created`,
+`paper.started`, `paper.stopped`, `paper.stepped`. Details: `docs/backtest-and-paper.md`.

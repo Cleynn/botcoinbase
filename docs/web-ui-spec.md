@@ -37,3 +37,6 @@ quality), the 14 validation checks with result, reason code, fixed explanation a
 and (ADMIN) the audit timeline; a VIEWER sees transitions without actor names and no audit timeline. Confirmation pages show the
 exact phrase, a password step and a phrase step, and no form at all while a guard refuses. All exchange-derived text is escaped
 by the template engine (nothing is marked safe) and reduced to a safe vocabulary before storage.
+
+## Reports (Phase 5)
+Navigation item "Reports" (ADMIN, VIEWER). List: kind, label badge (BACKTEST or PAPER), created, hash prefix. Detail: banner, provenance, tables, limitations, JSON/Markdown download links. No form, no action button. Every result is labelled BACKTEST or PAPER; nothing implies real trading.

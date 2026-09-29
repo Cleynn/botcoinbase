@@ -53,3 +53,13 @@ Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange fail
 | T36 | Exchange content as XSS | Parse-time reduction plus autoescape; hostile stored content tested on every pair page | Tested |
 | T37 | SSRF / open proxy via the runner | Fixed client host and paths, no redirects, proxy allows one CONNECT target and rejects private resolutions | Tested; proxy not run in a container here |
 | T38 | Wrongly optimistic fee model | Fees must be operator-attested and re-attested; model version recorded; both attested and stress rates required | Assumption documented (FEE_MODEL_V1) |
+
+## Phase 5 additions
+| Threat | Control | Residual |
+|---|---|---|
+| Poisoned or malformed candle data | Validation excludes and records; conflicts never overwrite; nothing invented | A consistently wrong upstream cannot be detected |
+| Tampered snapshot file | Two checksums verified on load; files read-only; manifests | Someone with DB write access could change both row and file |
+| Paper results mistaken for real | BACKTEST/PAPER labels, DB label CHECK, banner, limitations text | Human interpretation |
+| Overfitting via parameter search | Walk-forward with out-of-sample reporting; tiny grid | Backtests remain optimistic in ways not modelled |
+| Runaway paper capital | Trader invariants plus DB trigger constants | None known |
+| Fee assumptions wrong | Attested fees required; stress scenario at 0.6% | Attestation is a human claim |

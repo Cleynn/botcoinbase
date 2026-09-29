@@ -1,0 +1,425 @@
+{
+  "banner": "MODE: BACKTEST | LIVE TRADING: BLOCKED",
+  "config_sha256": {
+    "OPERATOR": "8cfd11c2bdecce00c1b8e71328ce181d813f7500ef9b24177c1ca7fa714bf8d9",
+    "STRESS": "2a3906313e00d3eaa41b78004239d18c7d6723bdf424ba9521ab39cb4c8e45ed"
+  },
+  "engine_version": "5.0.0",
+  "growth_policy": "disabled",
+  "kind": "BACKTEST",
+  "label": "BACKTEST",
+  "limitations": [
+    "Simulated with closed five-minute candles only: no order book, queue position or intra-candle order is modelled.",
+    "Fills are pessimistic by construction (price must trade through the limit, volume-capped, delayed one candle) but real fills can differ in either direction.",
+    "Fees are operator-attested, not read from Coinbase; the stress scenario uses the configured stress maker fee.",
+    "Synthetic or historical results do not predict future results and are not a profit guarantee.",
+    "The strategy never sells holdings at market; an unfinished position is marked to the last close, not realised.",
+    "Capital growth and regridding are disabled; the deployment cap is a fixed 35 USDC and the protected reserve at least 15 USDC."
+  ],
+  "priced_from": "unified USD book",
+  "product": "FICT-USDC",
+  "report_version": 1,
+  "scenarios": {
+    "OPERATOR": {
+      "activity": {
+        "average_deployed": "16.7764",
+        "breakout_stops": 1,
+        "candles_in_market": 7392,
+        "capital_blocked": 0,
+        "cycles_completed": 1,
+        "decisions_grid": 1,
+        "decisions_no_trade": 100,
+        "fills": 3,
+        "gap_events": 0,
+        "halts": 0,
+        "no_trade_reasons": {
+          "INSUFFICIENT_HISTORY": 72,
+          "TREND_UP": 28
+        },
+        "orders_placed": 4,
+        "partial_fills": 0,
+        "post_only_rejects": 0,
+        "stale_age_cancels": 1,
+        "stale_gap_cancels": 0,
+        "touched_no_fill": 8
+      },
+      "capital": {
+        "deployment_cap": "35",
+        "growth_enabled": false,
+        "protected_reserve": "15",
+        "total": "50"
+      },
+      "end_state": {
+        "cash": "32.857933",
+        "cost_basis": "17.239322",
+        "free_cash": "32.857933",
+        "halted": false,
+        "inventory": "0.1698",
+        "open_buys": 0,
+        "open_sells": 0,
+        "phase": "STOPPED",
+        "reserved": "0"
+      },
+      "engine_version": "5.0.0",
+      "equity_curve": [
+        [
+          1780000200,
+          "50"
+        ],
+        [
+          1780086600,
+          "50"
+        ],
+        [
+          1780173000,
+          "50"
+        ],
+        [
+          1780259400,
+          "50"
+        ],
+        [
+          1780345800,
+          "50"
+        ],
+        [
+          1780432200,
+          "49.3334"
+        ],
+        [
+          1780518600,
+          "47.961"
+        ],
+        [
+          1780605000,
+          "49.3334"
+        ],
+        [
+          1780691400,
+          "50.4492"
+        ],
+        [
+          1780777800,
+          "49.77"
+        ],
+        [
+          1780864200,
+          "49.0908"
+        ],
+        [
+          1780950600,
+          "49.77"
+        ],
+        [
+          1781037000,
+          "50.4492"
+        ],
+        [
+          1781123400,
+          "49.77"
+        ],
+        [
+          1781209800,
+          "49.0908"
+        ],
+        [
+          1781296200,
+          "49.77"
+        ],
+        [
+          1781382600,
+          "50.4492"
+        ],
+        [
+          1781469000,
+          "49.77"
+        ],
+        [
+          1781555400,
+          "49.0908"
+        ],
+        [
+          1781641800,
+          "49.77"
+        ],
+        [
+          1781728200,
+          "50.4492"
+        ],
+        [
+          1781814600,
+          "49.77"
+        ],
+        [
+          1781901000,
+          "49.0908"
+        ],
+        [
+          1781987400,
+          "49.77"
+        ],
+        [
+          1782073800,
+          "50.4492"
+        ],
+        [
+          1782160200,
+          "49.77"
+        ],
+        [
+          1782246600,
+          "49.0908"
+        ],
+        [
+          1782333000,
+          "49.77"
+        ],
+        [
+          1782419400,
+          "50.4492"
+        ],
+        [
+          1782505800,
+          "49.77"
+        ],
+        [
+          1782591900,
+          "49.2284"
+        ]
+      ],
+      "fee_rate": "0.002",
+      "fee_scenario": "OPERATOR",
+      "invariants": "checked after every candle: reserve, cap, levels 3-5, non-negative holdings",
+      "label": "BACKTEST",
+      "levels": 3,
+      "performance": {
+        "buy_and_hold_return": "-0.07326345190372171336668804203",
+        "fees_paid": "0.12",
+        "final_equity": "49.228351",
+        "max_drawdown": "0.0422206",
+        "max_drawdown_display": "4.2221%",
+        "net_pnl": "-0.771649",
+        "realized_pnl": "0.097255",
+        "return": "-0.01543298",
+        "return_display": "-1.5433%",
+        "unrealized_pnl": "-0.868904"
+      },
+      "period": {
+        "candles": 8640,
+        "first_candle": 1780000200,
+        "gap_count": 0,
+        "history_candles_before": 0,
+        "last_candle": 1782591900,
+        "missing_intervals": 0
+      },
+      "warmup_candles_required": 864
+    },
+    "STRESS": {
+      "activity": {
+        "average_deployed": "16.8425",
+        "breakout_stops": 1,
+        "candles_in_market": 7392,
+        "capital_blocked": 0,
+        "cycles_completed": 1,
+        "decisions_grid": 1,
+        "decisions_no_trade": 100,
+        "fills": 3,
+        "gap_events": 0,
+        "halts": 0,
+        "no_trade_reasons": {
+          "INSUFFICIENT_HISTORY": 72,
+          "TREND_UP": 28
+        },
+        "orders_placed": 4,
+        "partial_fills": 0,
+        "post_only_rejects": 0,
+        "stale_age_cancels": 1,
+        "stale_gap_cancels": 0,
+        "touched_no_fill": 8
+      },
+      "capital": {
+        "deployment_cap": "35",
+        "growth_enabled": false,
+        "protected_reserve": "15",
+        "total": "50"
+      },
+      "end_state": {
+        "cash": "32.647933",
+        "cost_basis": "17.309322",
+        "free_cash": "32.647933",
+        "halted": false,
+        "inventory": "0.1698",
+        "open_buys": 0,
+        "open_sells": 0,
+        "phase": "STOPPED",
+        "reserved": "0"
+      },
+      "engine_version": "5.0.0",
+      "equity_curve": [
+        [
+          1780000200,
+          "50"
+        ],
+        [
+          1780086600,
+          "50"
+        ],
+        [
+          1780173000,
+          "50"
+        ],
+        [
+          1780259400,
+          "50"
+        ],
+        [
+          1780345800,
+          "50"
+        ],
+        [
+          1780432200,
+          "49.1934"
+        ],
+        [
+          1780518600,
+          "47.821"
+        ],
+        [
+          1780605000,
+          "49.1934"
+        ],
+        [
+          1780691400,
+          "50.2392"
+        ],
+        [
+          1780777800,
+          "49.56"
+        ],
+        [
+          1780864200,
+          "48.8808"
+        ],
+        [
+          1780950600,
+          "49.56"
+        ],
+        [
+          1781037000,
+          "50.2392"
+        ],
+        [
+          1781123400,
+          "49.56"
+        ],
+        [
+          1781209800,
+          "48.8808"
+        ],
+        [
+          1781296200,
+          "49.56"
+        ],
+        [
+          1781382600,
+          "50.2392"
+        ],
+        [
+          1781469000,
+          "49.56"
+        ],
+        [
+          1781555400,
+          "48.8808"
+        ],
+        [
+          1781641800,
+          "49.56"
+        ],
+        [
+          1781728200,
+          "50.2392"
+        ],
+        [
+          1781814600,
+          "49.56"
+        ],
+        [
+          1781901000,
+          "48.8808"
+        ],
+        [
+          1781987400,
+          "49.56"
+        ],
+        [
+          1782073800,
+          "50.2392"
+        ],
+        [
+          1782160200,
+          "49.56"
+        ],
+        [
+          1782246600,
+          "48.8808"
+        ],
+        [
+          1782333000,
+          "49.56"
+        ],
+        [
+          1782419400,
+          "50.2392"
+        ],
+        [
+          1782505800,
+          "49.56"
+        ],
+        [
+          1782591900,
+          "49.0184"
+        ]
+      ],
+      "fee_rate": "0.006",
+      "fee_scenario": "STRESS",
+      "invariants": "checked after every candle: reserve, cap, levels 3-5, non-negative holdings",
+      "label": "BACKTEST",
+      "levels": 3,
+      "performance": {
+        "buy_and_hold_return": "-0.08069978239303657717046945502",
+        "fees_paid": "0.33",
+        "final_equity": "49.018351",
+        "max_drawdown": "0.0436206",
+        "max_drawdown_display": "4.3621%",
+        "net_pnl": "-0.981649",
+        "realized_pnl": "-0.042745",
+        "return": "-0.01963298",
+        "return_display": "-1.9633%",
+        "unrealized_pnl": "-0.938904"
+      },
+      "period": {
+        "candles": 8640,
+        "first_candle": 1780000200,
+        "gap_count": 0,
+        "history_candles_before": 0,
+        "last_candle": 1782591900,
+        "missing_intervals": 0
+      },
+      "warmup_candles_required": 864
+    }
+  },
+  "snapshot": {
+    "candles": 8640,
+    "content_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "engine_version_at_freeze": "5.0.0",
+    "file_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "gap_count": 0,
+    "id": "00000000-0000-0000-0000-00000000f1c7",
+    "max_ingest_run_id": 1,
+    "metadata_snapshot_id": "00000000-0000-0000-0000-00000000f1c8",
+    "missing_intervals": 0,
+    "range_end_iso": "2026-06-27T20:30:00Z",
+    "range_start_iso": "2026-05-28T20:30:00Z"
+  }
+}

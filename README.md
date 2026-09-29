@@ -39,3 +39,10 @@ Discovery, validation and lifecycle of USDC spot pairs from public Coinbase data
 `app/` application, `config/` YAML profiles, `infra/` Caddy and Postgres init, `scripts/` health,
 bootstrap and security validation, `tests/` (`tests/pending/` holds not-yet-runnable skeletons for later
 phases), `docs/`, `baseline/`.
+
+## Market data, backtests, paper trading (Phase 5)
+Public candle import (dry run unless `--commit`), checksummed Parquet snapshots, a deterministic grid
+strategy, a fee-aware backtest with walk-forward, and a local persisted paper exchange, driven by the
+`batch` service (`make market-import`, `market-snapshot`, `backtest`, `paper-*`). No private
+execution, no live mode. See `docs/backtest-and-paper.md`; example report (FICTIONAL, synthetic):
+`docs/examples/backtest-report-FICTIONAL.md`.
