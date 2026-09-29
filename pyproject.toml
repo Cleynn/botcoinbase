@@ -72,6 +72,7 @@ select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
 "tests/integration/test_safety_*.py" = ["E501"]
 "tests/unit/test_safety_*.py" = ["E501"]
 "tests/unit/test_exchange_boundary.py" = ["E501"]
+"tests/security/test_safety_boundaries.py" = ["E501"]
 # Fixed user-facing message catalogues are long sentences.
 "app/web/pair_views.py" = ["E501"]
 # Enum members named PASSWORD_* are event/permission names, not credentials.
