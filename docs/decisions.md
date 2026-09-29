@@ -204,6 +204,23 @@ Implemented: disabled-by-default import; ADMIN-only chain (CSRF + fresh single-u
 - Not verified: Docker start of `app`/`batch` with the shared `proposals` volume (no Docker daemon), `docker compose config`, any real Coinbase data (AS-C1). Policy is heuristic; no independent review.
 - review: SELF
 
+### DEC-021: Phase 8 safety machinery (2026-09-29)
+Implemented: pure risk engine, circuit breaker, kill switch, stale data/metadata and anomaly checks, GET-only private read adapter behind `NullSigner`, WebSocket hint parser, REST reconciliation, startup recovery, retry policy (reads only), ADMIN control workflow (four phrases), live gate that can only return BLOCKED, order path with immutable intents, scripted fake exchange and request-shape sandbox. Live remains blocked. Choices and deviations:
+- **Numbering.** The request calls this Phase 8; the baseline calls it Phase 9 (safety machinery). Scope followed the request.
+- **Adapter and WebSocket (deviation from CB-16 / paper-image rules).** The baseline keeps the private adapter and JWT signer out of the paper image and excludes WebSocket. The request asks for a private read adapter and user updates. Delivered: a **GET-only** adapter in `app/exchange` (not `app/adapters`), with a `NullSigner` as the only signer (no JWT/crypto code, no key loader), no write method, and a feed **parser** with no socket code. Every deployment has no reader and no gateway (`factory.py` returns None). The public client is unchanged and still the only egress user; the proxy allowlist is unchanged.
+- **No real gateway.** Kill switch "cancel known orders" and order submission run through an `ExecutionGateway` protocol whose only implementation is the test double. Without a gateway a cancel command FAILs loudly (`GATEWAY_UNAVAILABLE`); the paper venue is cancelled through the paper exchange.
+- **Bot control is the state authority for the new order path; the paper trader only honours kill and breaker** (start refused, next step cancels and pauses). Making paper depend on RUNNING/reconciliation would need a paper reconciler and is deferred to the paper deployment review.
+- **RESUME is web-only and needs a host-produced reconciliation** (the web tier has no egress). The database enforces it (fresh OK run <= 300 s, finished after any breaker trip, no UNKNOWN attempt). Recovery, breaker opening and kill release are host-only. Kill release leaves the bot PAUSED and recovery INCOMPLETE.
+- **All four controls use the full chain** (CSRF, fresh reauth, typed phrase), stricter than the baseline's CSRF-only restrictive actions, per the request. Audit is written before (`bot.control_requested`) and after (outcome or denial) the internal command.
+- **Times in guards are the application clock** carried in the row, not `clock_timestamp()` (BI-36 deviation, as in earlier phases); the initial control row is dated `epoch`.
+- **Absence proof is conservative and unverified**: two OK reconciliations started at least 120 s after the submit mark, none naming the client id. A later appearance is a blocking finding and trips the breaker. The baseline defers a real absence proof to Phase 11.
+- **Ceilings in the schema:** per-order notional <= 12 USDC (new constant), post-only limit GTC only, venues PAPER/FAKE only. An over-cap intent is refused by the schema and reported as `INTENT_REFUSED`.
+- **Equity for loss/drawdown** is sampled at recorded fills (price of each fill as the mark); with no fills equity equals the baseline. It is deterministic and needs no price history.
+- **Metrics:** thirteen `tradingdots_bot_*` families are now published from real tables (reserved-list wording and tests updated deliberately); labels avoid the forbidden `error`/`order` words (`failure_class`).
+- **Test double provenance:** FAKE-EXCHANGE never matches orders or fills anything by itself; sandbox code validates shapes only.
+- **Defects found while testing:** an over-cap intent raised instead of being reported; the reconciler did not flag an order wearing the id of a rejected attempt; absence proof could not skip an id a run had named (the database refused the whole run); list results with equal timestamps needed an insertion sequence to order runs.
+- review: SELF. **No independent security review has been performed.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;
