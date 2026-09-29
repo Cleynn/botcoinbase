@@ -88,6 +88,20 @@ EXPECTED = {
     "tradingdots_proposals",
     "tradingdots_llm_proposals_total",
     "tradingdots_llm_proposal_policy_rejections_total",
+    # Phase 8: safety machinery (real database facts about control state and the order path)
+    "tradingdots_bot_kill_switch_active",
+    "tradingdots_bot_circuit_breaker_state",
+    "tradingdots_bot_running",
+    "tradingdots_bot_recovery_complete",
+    "tradingdots_bot_reconciliation_age_seconds",
+    "tradingdots_bot_reconciliation_mismatches_total",
+    "tradingdots_bot_risk_rejections_total",
+    "tradingdots_bot_order_intents_total",
+    "tradingdots_bot_order_events_total",
+    "tradingdots_bot_open_orders",
+    "tradingdots_bot_api_requests_total",
+    "tradingdots_bot_api_errors_total",
+    "tradingdots_bot_fill_anomalies_total",
 }
 # Contract names that Phase 4 now publishes because a real source exists.
 PUBLISHED_CONTRACT = {
@@ -95,6 +109,24 @@ PUBLISHED_CONTRACT = {
     "tradingdots_pair_state_total",
     "tradingdots_llm_proposals_total",
     "tradingdots_llm_proposal_policy_rejections_total",
+}
+# Contract names published from Phase 8 (the safety machinery), plus three operational additions.
+PHASE8_CONTRACT = {
+    "tradingdots_bot_kill_switch_active",
+    "tradingdots_bot_circuit_breaker_state",
+    "tradingdots_bot_reconciliation_age_seconds",
+    "tradingdots_bot_reconciliation_mismatches_total",
+    "tradingdots_bot_risk_rejections_total",
+    "tradingdots_bot_order_intents_total",
+    "tradingdots_bot_order_events_total",
+    "tradingdots_bot_open_orders",
+    "tradingdots_bot_api_requests_total",
+    "tradingdots_bot_api_errors_total",
+}
+PHASE8_EXTRA = {
+    "tradingdots_bot_running",
+    "tradingdots_bot_recovery_complete",
+    "tradingdots_bot_fill_anomalies_total",
 }
 # Gauges that keep a contract `_total` name (they count rows, they are not counters).
 GAUGES_NAMED_TOTAL = PUBLISHED_CONTRACT
@@ -116,13 +148,16 @@ def test_no_metric_is_invented_for_unfinished_bot_components() -> None:
     invented = [
         n
         for n in CONTRACT_NAMES
-        if n != "tradingdots_bot_info" and n in m.CATALOGUE_NAMES and n not in PUBLISHED_CONTRACT
+        if n != "tradingdots_bot_info"
+        and n in m.CATALOGUE_NAMES
+        and n not in PUBLISHED_CONTRACT | PHASE8_CONTRACT
     ]
     assert invented == []
     assert not [
         n
         for n in m.CATALOGUE_NAMES
-        if re.match(
+        if n not in PHASE8_CONTRACT | PHASE8_EXTRA
+        and re.match(
             r"tradingdots_(bot_(?!info)|llm_(?!proposals_total|proposal_policy_rejections_total)|order|fill|reconcil|kill|breaker|risk)",
             n,
         )
@@ -241,10 +276,10 @@ def family(name: str, samples: list[tuple[dict[str, str], float]], kind: str = "
 
 def test_unknown_families_are_dropped() -> None:
     kept, dropped = m.sanitize(
-        [family("tradingdots_bot_open_orders", [({}, 0)]), family("something_else", [({}, 1)])]
+        [family("tradingdots_bot_deployed_quote", [({}, 0)]), family("something_else", [({}, 1)])]
     )
     assert kept == [] and set(dropped) == {
-        "unknown_family:tradingdots_bot_open_orders",
+        "unknown_family:tradingdots_bot_deployed_quote",
         "unknown_family:something_else",
     }
 
@@ -414,6 +449,6 @@ def test_monitoring_docs_list_every_metric_and_the_reserved_ones_as_absent() -> 
         n
         for n in CONTRACT_NAMES
         if n != "tradingdots_bot_info"
-        and n not in PUBLISHED_CONTRACT
+        and n not in PUBLISHED_CONTRACT | PHASE8_CONTRACT
         and f"`{n}`" in catalogue_table
     ]

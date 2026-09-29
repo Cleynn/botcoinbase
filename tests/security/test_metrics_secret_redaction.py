@@ -151,7 +151,12 @@ def test_label_values_are_drawn_from_small_fixed_sets(
             values.setdefault(name, set()).add(value)
     assert values["event"] == {e.value for e in AuditEventType}
     assert values["role"] == {"ADMIN", "VIEWER"} and values["mode"] == {"BACKTEST"}
-    assert values["status_class"] <= {"2xx", "3xx", "4xx", "5xx", "other"}
+    assert values["status_class"] <= {"2xx", "3xx", "4xx", "5xx", "other", "ok", "failed"}
+    assert values["endpoint_class"] == {"read", "write"}
+    assert values["failure_class"] <= {
+        "timeout", "network", "rate_limited", "server", "auth", "parse", "other",
+    }  # fmt: skip
+    assert values["result"] == {"allowed", "blocked"}
     assert values["collector"] <= {"database", "audit_chain", "render", "other"}
     assert all(
         v.startswith("/") or v == "unmatched" or v == "other" for v in values["route_template"]
@@ -199,16 +204,11 @@ def test_no_component_metrics_leak_a_zero_for_unbuilt_parts(
 ) -> None:
     body = scrape(monitoring, clock)
     for absent in (
-        "bot_open_orders",
-        "kill_switch",
-        "reconciliation",
-        "circuit_breaker",
         "bot_deployed_quote",
         "bot_protected_reserve",
         "bot_realized_pnl",
         "llm_review",
         "data_freshness",
-        "order_intents",
         "fee_paid",
     ):
         assert absent not in body, absent

@@ -20,6 +20,7 @@ from app.domain.models import ChainStatus, Clock
 from app.monitoring.alerts import AttentionItem, evaluate_attention
 from app.storage.database import Storage, head_version
 from app.storage.repositories import Repos
+from app.storage.safety_repositories import SafetyStats
 
 logger = logging.getLogger("app")
 
@@ -47,6 +48,18 @@ class MarketFacts:
 
 
 @dataclass(frozen=True)
+class SafetyFacts:
+    """Bot control state and aggregate safety counts (from the database; nothing invented)."""
+
+    kill_active: bool
+    breaker_open: bool
+    running: bool
+    recovery_complete: bool
+    reconciliation_age_seconds: float | None
+    stats: SafetyStats
+
+
+@dataclass(frozen=True)
 class MonitoringSnapshot:
     taken_at: datetime
     db_up: bool
@@ -63,6 +76,20 @@ class MonitoringSnapshot:
     pair_state_counts: dict[str, int] | None = None
     pair_oldest_verified_at: datetime | None = None
     market: MarketFacts | None = None
+    safety: SafetyFacts | None = None
+
+
+def _safety_facts(repos: Repos, now: datetime) -> SafetyFacts:
+    control = repos.safety.control()
+    run = repos.safety.latest_run()
+    return SafetyFacts(
+        kill_active=control.kill_switch == "ACTIVE",
+        breaker_open=control.breaker_state == "OPEN",
+        running=control.bot_state == "RUNNING",
+        recovery_complete=control.recovery_state == "COMPLETE",
+        reconciliation_age_seconds=(now - run.finished_at).total_seconds() if run else None,
+        stats=repos.safety.stats(),
+    )
 
 
 def _market_facts(repos: Repos) -> MarketFacts:
@@ -161,6 +188,7 @@ class MonitoringService:
                     pair_state_counts=repos.pairs.state_counts(),
                     pair_oldest_verified_at=repos.pairs.oldest_metadata_age_basis(),
                     market=_market_facts(repos),
+                    safety=_safety_facts(repos, now),
                 )
                 self._refresh_chain(repos, now)
         except Exception:  # noqa: BLE001  monitoring must never raise into the application

@@ -57,6 +57,10 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("GET", "/review/packages/{package_id}"): "manage_review_packages",
     ("POST", "/review/packages/{package_id}/verify"): "manage_review_packages",
     ("POST", "/review/packages/{package_id}/download"): "manage_review_packages",
+    ("GET", "/bot"): "view_bot",
+    ("GET", "/bot/{slug}/request"): "manage_bot",
+    ("POST", "/bot/{slug}/reauth"): "manage_bot",
+    ("POST", "/bot/{slug}/confirm"): "manage_bot",
     ("GET", "/review/proposals"): "manage_proposals",
     ("GET", "/review/proposals/import-enable/request"): "manage_proposals",
     ("POST", "/review/proposals/import-enable/reauth"): "manage_proposals",
@@ -116,6 +120,7 @@ def test_anonymous_visitors_cannot_use_any_protected_route(app: Any, client: Tes
             proposal_id=uuid4(),
             kind="implemented",
             action="archive",
+            slug="pause",
         )
         if method == "GET":
             response = client.get(path, follow_redirects=False)
@@ -342,8 +347,11 @@ def test_no_page_exposes_a_bot_pair_exchange_or_config_control(admin_client: Tes
             "pause bot",
         ):
             assert word not in body
-    # Phase 4 added /pairs and Phase 6 /review (ADMIN only, no bot control); the rest do not exist.
-    for path in ("/bot", "/orders", "/exchange", "/config"):
+    # Phase 8 added /bot (status for everyone, four confirmed controls for ADMIN); it has no order,
+    # exchange or config control. The rest do not exist.
+    bot = admin_client.get("/bot").text.lower()
+    assert re.findall(r'<form[^>]*action="([^"]+)"', bot) == ["/logout"]
+    for path in ("/orders", "/exchange", "/config"):
         assert admin_client.get(path).status_code == 404
         assert admin_client.post(path, data={"csrf_token": "x"}).status_code in (403, 404, 405)
 

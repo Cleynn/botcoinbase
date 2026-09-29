@@ -26,18 +26,23 @@ def test_dashboard_shows_banner_and_only_known_values(
     )
     unavailable = body.split("Not available yet")[1]
     for label in (
-        "Bot state",
         "Active pair",
         "Protected reserve",
         "Deployed capital",
         "Data freshness",
-        "Reconciliation status",
-        "Circuit breaker state",
-        "Kill switch state",
         "Alerts",
     ):
         assert label in unavailable
-    assert "Not available" in unavailable and "Unknown" in unavailable
+    assert "Not available" in unavailable
+    # Phase 8: the bot control state is real, read from the control row (PAUSED by default)
+    for label, value in (
+        ("Bot state", "PAUSED"),
+        ("Kill switch state", "INACTIVE"),
+        ("Circuit breaker state", "CLOSED"),
+        ("Startup recovery", "INCOMPLETE"),
+        ("Reconciliation status", "no reconciliation yet"),
+    ):
+        assert re.search(rf"<dt>{label}</dt><dd>{value}</dd>", body), label
     assert not re.search(r"\d+(\.\d+)?\s*USDC", body)  # no invented balances
 
 
@@ -80,9 +85,8 @@ def test_navigation_differs_by_role(admin_client: TestClient, viewer_client: Tes
         assert 'href="/security"' in nav
         assert 'href="/pairs"' in nav  # Phase 4: a real page for every signed-in user
         assert 'href="/reports"' in nav  # Phase 5
-        for later in ("Bot", "LLM Review"):
-            assert re.search(rf'aria-disabled="true">{later} ', nav)
-        assert 'href="/bot"' not in nav
+        assert 'href="/bot"' in nav  # Phase 8: status for every signed-in user
+        assert re.search(r'aria-disabled="true">LLM Review ', nav)
 
 
 def test_pages_work_without_javascript_and_load_no_external_assets(

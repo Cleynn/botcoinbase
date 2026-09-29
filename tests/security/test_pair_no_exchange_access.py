@@ -102,9 +102,16 @@ def test_the_adapter_package_has_no_credential_loading_or_signing() -> None:
 
 def test_no_pair_route_can_create_or_cancel_an_order(app: Any) -> None:
     paths = [r.path for r in walk_routes(app)]
+    # Phase 8 added exactly the four confirmed bot controls (pause, resume, cancel-known, kill);
+    # none of these paths names an order, fill, account, balance or exchange.
+    bot_controls = {"/bot", "/bot/{slug}/request", "/bot/{slug}/reauth", "/bot/{slug}/confirm"}
     assert not [
-        p for p in paths if re.search(r"order|fill|account|balance|exchange|coinbase|kill|bot", p)
+        p
+        for p in paths
+        if p not in bot_controls
+        and re.search(r"order|fill|account|balance|exchange|coinbase|kill|bot", p)
     ]
+    assert not [p for p in bot_controls if re.search(r"order|fill|account|balance|exchange", p)]
     for route in walk_routes(app):
         if route.path.startswith("/pairs"):
             assert route.methods <= {"GET", "POST", "HEAD"}

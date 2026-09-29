@@ -245,9 +245,9 @@ def first_query(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_verifier_rejects_an_invented_metric(vmc: Any, board: dict[str, Any]) -> None:
-    doc = mutate(board, lambda d: first_query(d).update(expr="tradingdots_bot_open_orders"))
+    doc = mutate(board, lambda d: first_query(d).update(expr="tradingdots_bot_deployed_quote"))
     assert any(
-        "unknown metric 'tradingdots_bot_open_orders'" in p
+        "unknown metric 'tradingdots_bot_deployed_quote'" in p
         for p in vmc.check_dashboard(doc, recorded(vmc), "x")
     )
 

@@ -40,6 +40,7 @@ from app.domain.permissions import Permission
 from app.pairs.service import PairService
 from app.proposals.service import ProposalService
 from app.review.service import ReviewService
+from app.safety.control import ControlService
 from app.storage.database import Storage
 from app.web.view_models import Renderer
 
@@ -58,6 +59,7 @@ class Services:
     pairs: PairService
     review: ReviewService
     proposals: ProposalService
+    bot: ControlService
     audit: AuditWriter
     limiter: LoginRateLimiter
     csrf_key: bytes

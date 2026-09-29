@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ view.title }}</h1>
+<p><a href="/bot">Back</a></p>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice">{{ view.notice }}</p>
+<ul>{% for line in view.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+{% if view.blockers %}<p>Blocked right now by:</p><ul>{% for b in view.blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+<section aria-labelledby="pw-h">
+  <h2 id="pw-h">Step 1: confirm your password</h2>
+  <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
+  <form method="post" action="{{ view.action_path }}/reauth" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="reauth_password">Password</label>
+       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+    <p><button type="submit">Confirm password</button></p>
+  </form>
+</section>
+<section aria-labelledby="ph-h">
+  <h2 id="ph-h">Step 2: type the phrase</h2>
+  <form method="post" action="{{ view.action_path }}/confirm" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    <p><label for="confirmation">Type <code>{{ view.phrase }}</code> exactly</label>
+       <input id="confirmation" name="confirmation" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="128" required></p>
+    <p><button type="submit">{{ view.title }}</button></p>
+  </form>
+</section>
+{% endblock %}

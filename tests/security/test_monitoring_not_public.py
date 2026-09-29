@@ -627,7 +627,7 @@ def _first_rule(alert: dict[str, Any]) -> dict[str, Any]:
             "annotations must be exactly",
         ),
         (
-            lambda a, r: _first_rule(a).update(expr="tradingdots_bot_open_orders > 5"),
+            lambda a, r: _first_rule(a).update(expr="tradingdots_bot_deployed_quote > 5"),
             "unknown metric",
         ),
         (lambda a, r: _first_rule(a).update(expr='up{user="x"} == 0'), "sensitive label"),

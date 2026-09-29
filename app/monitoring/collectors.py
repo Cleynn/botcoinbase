@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
 from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, Metric
@@ -14,7 +14,7 @@ from app.domain.enums import AuditEventType, Role
 from app.domain.models import Clock
 from app.domain.pairs import PairState
 from app.market.candles import EVENT_CODES
-from app.monitoring.health import MonitoringService, MonitoringSnapshot
+from app.monitoring.health import MonitoringService, MonitoringSnapshot, SafetyFacts
 from app.monitoring.metrics import VERSION, Metrics, MetricsServer
 from app.storage.database import Storage
 
@@ -225,6 +225,8 @@ class AppCollector(Collector):
             )
             denied.add_metric([], counts.get("review.denied", 0))
             yield denied
+        if snap.safety is not None:
+            yield from _safety_families(snap.safety)
         if snap.chain is not None:
             yield _gauge(
                 "tradingdots_audit_chain_ok",
@@ -274,3 +276,142 @@ def build_monitoring(*, storage: Storage, clock: Clock, settings: Settings) -> M
     )
     metrics.registry.register(AppCollector(service.snapshot, mode=settings.mode))
     return Monitoring(metrics, service, settings)
+
+
+_REASON_CLASS = {
+    "authority": (
+        "LIVE_GATE_BLOCKED", "KILL_SWITCH_ACTIVE", "BREAKER_OPEN", "BOT_NOT_RUNNING",
+        "RECOVERY_INCOMPLETE",
+    ),
+    "reconciliation": (
+        "RECONCILIATION_MISSING", "RECONCILIATION_STALE", "RECONCILIATION_FAILED", "UNKNOWN_ORDER",
+        "UNKNOWN_ATTEMPT", "UNEXPECTED_BALANCE", "DUPLICATE_CLIENT_ID", "DUPLICATE_INTENT",
+    ),
+    "data": (
+        "STALE_MARKET_DATA", "STALE_METADATA", "SPREAD_ABNORMAL", "SPREAD_UNKNOWN",
+        "PRICE_DEVIATION", "INPUTS_UNAVAILABLE", "API_FAILURES",
+    ),
+    "order": (
+        "PRODUCT_NOT_TRADABLE", "PAIR_NOT_ACTIVE", "PRICE_PRECISION", "SIZE_PRECISION",
+        "BELOW_MIN_SIZE", "ABOVE_MAX_SIZE", "BELOW_MIN_NOTIONAL", "ORDER_SHAPE",
+    ),
+    "capital": (
+        "RESERVE_BREACH", "DEPLOYMENT_CAP_BREACH", "ORDER_CAP_BREACH", "SELL_EXCEEDS_INVENTORY",
+        "FEE_UNATTESTED", "FEE_EXPIRED", "EDGE_BELOW_COSTS",
+    ),
+    "performance": ("LOSS_LIMIT", "DRAWDOWN_LIMIT", "EQUITY_UNKNOWN"),
+}  # fmt: skip
+REASON_CLASSES = (*_REASON_CLASS, "other")
+_CLASS_OF = {code: cls for cls, codes in _REASON_CLASS.items() for code in codes}
+FAILURE_CLASSES = ("timeout", "network", "rate_limited", "server", "auth", "parse", "other")
+_FAILURE_OF = {
+    "TIMEOUT": "timeout",
+    "NETWORK": "network",
+    "RATE_LIMITED": "rate_limited",
+    "SERVER_ERROR": "server",
+    "AUTH_REJECTED": "auth",
+    "NO_CREDENTIALS": "auth",
+    "UNEXPECTED_RESPONSE": "parse",
+}
+ORDER_EVENT_TYPES = (
+    "intent_created", "risk_allowed", "risk_blocked", "attempt_authorized", "submitting",
+    "submitted", "rejected", "unknown", "resolved", "absent",
+)  # fmt: skip
+
+
+def _safety_families(f: SafetyFacts) -> Iterator[Metric]:
+    yield _gauge(
+        "tradingdots_bot_kill_switch_active",
+        "1 while the kill switch is active, else 0.",
+        1 if f.kill_active else 0,
+    )
+    yield _gauge(
+        "tradingdots_bot_circuit_breaker_state",
+        "1 while the circuit breaker is open, else 0.",
+        1 if f.breaker_open else 0,
+    )
+    yield _gauge(
+        "tradingdots_bot_running",
+        "1 while the bot state is RUNNING, else 0 (PAUSED).",
+        1 if f.running else 0,
+    )
+    yield _gauge(
+        "tradingdots_bot_recovery_complete",
+        "1 once startup recovery completed, else 0.",
+        1 if f.recovery_complete else 0,
+    )
+    yield _gauge(
+        "tradingdots_bot_reconciliation_age_seconds",
+        "Seconds since the last reconciliation finished (absent if none ever ran).",
+        f.reconciliation_age_seconds,
+    )
+    stats = f.stats
+    mismatches = CounterMetricFamily(
+        "tradingdots_bot_reconciliation_mismatches", "Blocking reconciliation findings recorded."
+    )
+    mismatches.add_metric([], stats.findings)
+    yield mismatches
+    rejections = CounterMetricFamily(
+        "tradingdots_bot_risk_rejections",
+        "Risk-engine block reasons by class.",
+        labels=["reason_class"],
+    )
+    by_class = dict.fromkeys(REASON_CLASSES, 0)
+    for code, n in stats.reasons.items():
+        by_class[_CLASS_OF.get(code, "other")] += n
+    for cls in REASON_CLASSES:
+        rejections.add_metric([cls], by_class[cls])
+    yield rejections
+    intents = CounterMetricFamily(
+        "tradingdots_bot_order_intents",
+        "Risk decisions on order intents by result.",
+        labels=["result"],
+    )
+    intents.add_metric(["allowed"], stats.decisions.get("ALLOW", 0))
+    intents.add_metric(["blocked"], stats.decisions.get("BLOCK", 0))
+    yield intents
+    events = CounterMetricFamily(
+        "tradingdots_bot_order_events",
+        "Audited order lifecycle events by type.",
+        labels=["event_type"],
+    )
+    for kind in ORDER_EVENT_TYPES:
+        events.add_metric([kind], stats.events.get(f"order.{kind}", 0))
+    yield events
+    yield _gauge(
+        "tradingdots_bot_open_orders",
+        "Order attempts the bot created that are working or being cancelled.",
+        stats.attempts.get("WORKING", 0) + stats.attempts.get("CANCEL_REQUESTED", 0),
+    )
+    requests = CounterMetricFamily(
+        "tradingdots_bot_api_requests",
+        "Exchange boundary calls by class and result.",
+        labels=["endpoint_class", "status_class"],
+    )
+    errors = CounterMetricFamily(
+        "tradingdots_bot_api_errors",
+        "Failed exchange boundary calls by class and failure class.",
+        labels=["endpoint_class", "failure_class"],
+    )
+    req_counts: dict[tuple[str, str], int] = {}
+    err_counts: dict[tuple[str, str], int] = {}
+    for (operation, ok, code), n in stats.api.items():
+        endpoint = "write" if operation in ("submit", "cancel") else "read"
+        req_counts[(endpoint, "ok" if ok else "failed")] = (
+            req_counts.get((endpoint, "ok" if ok else "failed"), 0) + n
+        )
+        if not ok:
+            failure = _FAILURE_OF.get(code, "other")
+            err_counts[(endpoint, failure)] = err_counts.get((endpoint, failure), 0) + n
+    for endpoint in ("read", "write"):
+        for status in ("ok", "failed"):
+            requests.add_metric([endpoint, status], req_counts.get((endpoint, status), 0))
+        for failure in FAILURE_CLASSES:
+            errors.add_metric([endpoint, failure], err_counts.get((endpoint, failure), 0))
+    yield requests
+    yield errors
+    anomalies = CounterMetricFamily(
+        "tradingdots_bot_fill_anomalies", "Fill anomalies found by reconciliation."
+    )
+    anomalies.add_metric([], stats.fill_anomalies)
+    yield anomalies

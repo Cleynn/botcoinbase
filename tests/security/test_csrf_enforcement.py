@@ -20,6 +20,8 @@ def unsafe_paths(app: Any) -> list[str]:
 
 def test_every_state_changing_route_is_covered(app: Any) -> None:
     assert unsafe_paths(app) == [
+        "/bot/{slug}/confirm",
+        "/bot/{slug}/reauth",
         "/login",
         "/logout",
         "/pairs/candidates",

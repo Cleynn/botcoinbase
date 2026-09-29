@@ -12,6 +12,7 @@ from fastapi.responses import Response
 from app.api.dependencies import get_services, require_permission
 from app.domain.models import AuthContext
 from app.domain.permissions import Permission, has_permission
+from app.web.bot_views import bot_rows
 from app.web.report_views import market_rows
 from app.web.view_models import build_dashboard
 
@@ -44,6 +45,7 @@ def dashboard(
     try:  # read-only BACKTEST/PAPER facts; a problem here must never break the dashboard
         with services.storage.tx() as repos:
             view = replace(view, known=view.known + market_rows(repos, services.clock.now()))
+            view = replace(view, known=view.known + bot_rows(repos, services.clock.now()))
     except Exception:  # noqa: BLE001
         logger.error("market summary unavailable")
     return services.renderer.html(

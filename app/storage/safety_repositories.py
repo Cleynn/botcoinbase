@@ -160,9 +160,65 @@ def _attempt(row: dict[str, Any]) -> AttemptRow:
     return AttemptRow(**row)
 
 
+@dataclass(frozen=True)
+class SafetyStats:
+    """Aggregates for metrics: counts only, never ids, amounts or free text."""
+
+    reasons: dict[str, int]
+    decisions: dict[str, int]
+    attempts: dict[str, int]
+    api: dict[tuple[str, bool, str], int]  # (operation, ok, code) -> count
+    findings: int
+    fill_anomalies: int
+    events: dict[str, int]
+
+
 class SafetyRepository:
     def __init__(self, conn: Conn) -> None:
         self._conn = conn
+
+    def stats(self) -> SafetyStats:
+        reasons = {
+            r["reason"]: int(r["n"])
+            for r in self._conn.execute(
+                "SELECT r AS reason, count(*) AS n FROM risk_decisions, unnest(reasons) AS r "
+                "GROUP BY r"
+            ).fetchall()
+        }
+        decisions = {
+            r["decision"]: int(r["n"])
+            for r in self._conn.execute(
+                "SELECT decision, count(*) AS n FROM risk_decisions GROUP BY decision"
+            ).fetchall()
+        }
+        api = {
+            (r["operation"], r["ok"], r["code"] or ""): int(r["n"])
+            for r in self._conn.execute(
+                "SELECT operation, ok, code, count(*) AS n FROM api_events GROUP BY operation, ok, code"
+            ).fetchall()
+        }
+        findings = self._conn.execute(
+            "SELECT count(*) AS n FROM reconciliation_findings"
+        ).fetchone()
+        anomalies = self._conn.execute(
+            "SELECT count(*) AS n FROM reconciliation_findings WHERE code = 'FILL_ANOMALY'"
+        ).fetchone()
+        events = {
+            r["event_code"]: int(r["n"])
+            for r in self._conn.execute(
+                "SELECT event_code, count(*) AS n FROM audit_events WHERE event_code LIKE 'order.%%' "
+                "GROUP BY event_code"
+            ).fetchall()
+        }
+        return SafetyStats(
+            reasons,
+            decisions,
+            self.counts_by_state(),
+            api,
+            int(findings["n"]) if findings else 0,
+            int(anomalies["n"]) if anomalies else 0,
+            events,
+        )
 
     # ------------------------------------------------------------------ control
     def control(self, *, for_update: bool = False) -> ControlRow:

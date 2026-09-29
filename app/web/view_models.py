@@ -17,11 +17,10 @@ from app.domain.models import AuditRecord, AuthContext, ChainStatus, SessionSumm
 from app.domain.permissions import Permission, has_permission
 
 WEB_DIR = Path(__file__).resolve().parent
-DISABLED_NAV = ("Bot", "LLM Review")
+DISABLED_NAV = ("LLM Review",)
 
 # Phase 1 fields that have no data source yet. Every value is "Unknown" or "Not available".
 UNAVAILABLE_TILES: tuple[tuple[str, str], ...] = (
-    ("Bot state", "Unknown"),
     ("Active pair", "Not available"),
     ("Protected reserve", "Not available"),
     ("Deployed capital", "Not available"),
@@ -29,9 +28,6 @@ UNAVAILABLE_TILES: tuple[tuple[str, str], ...] = (
     ("Grid status", "Not available"),
     ("Data freshness", "Not available"),
     ("Product metadata freshness", "Not available"),
-    ("Reconciliation status", "Unknown"),
-    ("Circuit breaker state", "Unknown"),
-    ("Kill switch state", "Unknown"),
     ("Recent risk decisions", "Not available"),
     ("Alerts", "Not available"),
     ("Latest reports", "Not available"),

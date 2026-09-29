@@ -20,6 +20,7 @@ VIEWER_ALLOWED = {
     Permission.LOGOUT,
     Permission.VIEW_PAIRS,
     Permission.VIEW_REPORTS,
+    Permission.VIEW_BOT,
 }
 ADMIN_ONLY = {
     Permission.VIEW_USER_DIRECTORY,
@@ -28,6 +29,7 @@ ADMIN_ONLY = {
     Permission.MANAGE_PAIRS,
     Permission.MANAGE_REVIEW_PACKAGES,
     Permission.MANAGE_PROPOSALS,
+    Permission.MANAGE_BOT,
 }
 
 

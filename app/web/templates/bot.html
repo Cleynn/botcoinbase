@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Bot <span class="badge">{{ view.gate_text }}</span></h1>
+{% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
+<p class="notice">{{ view.notice }}</p>
+
+<section aria-labelledby="st-h">
+  <h2 id="st-h">State</h2>
+  <dl>
+    <dt>Bot state</dt><dd><strong>{{ view.bot_state }}</strong></dd>
+    <dt>Kill switch</dt><dd><strong>{{ view.kill_switch }}</strong>{% if view.kill_switch == "ACTIVE" %} ({{ view.kill_reason }}){% endif %}</dd>
+    <dt>Circuit breaker</dt><dd><strong>{{ view.breaker_state }}</strong>{% if view.breaker_state == "OPEN" %} ({{ view.breaker_reason }}, cooldown until {{ view.breaker_until }}){% endif %}</dd>
+    <dt>Startup recovery</dt><dd><strong>{{ view.recovery_state }}</strong></dd>
+    <dt>Reconciliation</dt><dd>{{ view.recon_text }}</dd>
+    <dt>Exchange reads</dt><dd>{{ view.api_text }}</dd>
+  </dl>
+</section>
+
+<section aria-labelledby="gate-h">
+  <h2 id="gate-h">Live gate</h2>
+  <p><strong>{{ view.gate_text }}</strong>. Nothing in this build can open it. Unmet conditions:</p>
+  <ul>{% for r in view.gate_reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+</section>
+
+{% if view.recon_findings %}
+<section aria-labelledby="fi-h">
+  <h2 id="fi-h">Reconciliation findings (blocking)</h2>
+  <ul>{% for code, subject in view.recon_findings %}<li><code>{{ code }}</code> {{ subject }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section aria-labelledby="or-h">
+  <h2 id="or-h">Order attempts by state</h2>
+  {% if view.counts %}<ul>{% for state, n in view.counts %}<li>{{ state }}: {{ n }}</li>{% endfor %}</ul>{% else %}<p>No order attempts.</p>{% endif %}
+  {% if view.blocks %}
+  <h3>Recent risk decisions</h3>
+  <ul>{% for when, reasons in view.blocks %}<li>{{ when }}: {{ reasons | join("; ") }}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
+{% if view.can_manage %}
+<section aria-labelledby="ct-h">
+  <h2 id="ct-h">Controls (ADMIN)</h2>
+  <p>Each control asks for your password, then an exact phrase.</p>
+  <ul>{% for slug, label, phrase in view.actions %}<li><a href="/bot/{{ slug }}/request">{{ label }}…</a></li>{% endfor %}</ul>
+  {% if view.resume_blockers %}<p>Resume is blocked now by:</p><ul>{% for b in view.resume_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+
+<section aria-labelledby="hi-h">
+  <h2 id="hi-h">History</h2>
+  {% if view.history %}<ul>{% for when, actor, event, reason in view.history %}<li>{{ when }} · {{ actor }} · {{ event }} · {{ reason }}</li>{% endfor %}</ul>{% else %}<p>No control changes yet.</p>{% endif %}
+  {% if view.commands %}
+  <h3>Cancel commands</h3>
+  <ul>{% for when, origin, state, done, code in view.commands %}<li>{{ when }} · {{ origin }} · {{ state }} · {{ done }} · {{ code }}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+{% endblock %}
