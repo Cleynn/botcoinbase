@@ -3,7 +3,7 @@
 Deterministic, fee-aware Coinbase Advanced Trade **spot-grid research, backtest and paper-trading platform**.
 It is **not an AI trading bot**. **LIVE TRADING: BLOCKED** in every build produced from this repository.
 
-**Status: Phase 2 (authentication and security pages).** Local-CLI ADMIN bootstrap, Argon2id, server-side sessions, CSRF, login throttling, audit log, Security and Audit pages. There is still no exchange adapter, no orders, no pair management, no data import, no LLM packages/proposals and no bot controls. Every unmeasured value reads "Unknown" or "Not available".
+**Status: Phase 3 (monitoring).** Prometheus, Grafana and node-exporter run alongside the app (read-only, internal, no alert delivery); see `docs/monitoring.md`. Phase 2 provides authentication and the security pages. Local-CLI ADMIN bootstrap, Argon2id, server-side sessions, CSRF, login throttling, audit log, Security and Audit pages. There is still no exchange adapter, no orders, no pair management, no data import, no LLM packages/proposals and no bot controls. Every unmeasured value reads "Unknown" or "Not available".
 
 Stack: Python 3.12, FastAPI, server-rendered Jinja2, vendored HTMX, PostgreSQL, Redis, Caddy.
 No React/Node/npm/CDN/frontend build chain. Governing documents: `baseline/TRADINGDOTS_HANDOFF.md`
@@ -30,7 +30,7 @@ docker compose run --rm -it ctl python scripts/create_admin.py   # first ADMIN, 
 ```
 
 ## Make targets
-`format lint typecheck test up down logs health verify-security-config` (plus `verify-security-config-example`).
+`format lint typecheck test up down logs health verify-security-config verify-monitoring-config monitoring-status` (plus `verify-security-config-example`).
 
 ## Layout
 `app/` application, `config/` YAML profiles, `infra/` Caddy and Postgres init, `scripts/` health,

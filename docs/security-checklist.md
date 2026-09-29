@@ -25,11 +25,27 @@
 - [x] XSS: autoescape + StrictUndefined, hostile values escaped, no reflected parameters, CSP without unsafe-inline
 - [x] Usable without JavaScript; no horizontal scroll at 375 px (Chromium)
 
+## Phase 3: monitoring
+- [x] Prometheus, Grafana, node-exporter, cAdvisor, PostgreSQL, Redis, the app and the migrate job publish no host ports; only Caddy does (`test_monitoring_not_public.py`)
+- [x] Prometheus is on internal networks only, is never proxied, and Caddy returns 404 for `/metrics*` on both hosts and hides Grafana's `/api/health`
+- [x] `/metrics` is served only by a separate internal listener (private bind, allowed scrapers only, GET only, no peer logging); the web app answers 404 for it, signed in or not
+- [x] Production refuses a wildcard/public metrics bind address and broad or public scraper networks (documentation ranges included)
+- [x] Prometheus scrape and evaluation 15 s; retention 30 d / 15 GB; lifecycle and admin APIs disabled (checked against **real Prometheus 2.53**: reload/quit 403, admin "disabled")
+- [x] No Alertmanager, remote read/write, webhook, e-mail or chat transport; rules cannot reference controls, exchanges or URLs; Grafana alerting off
+- [x] Grafana: login required, anonymous/sign-up/embedding/public dashboards/plugins/update checks/metrics disabled, secure strict cookies, admin password and secret key from required variables with no defaults; production validation rejects missing/default/placeholder values
+- [x] Dashboards and datasource provisioned read-only, one internal datasource without credentials, no links or actions, no HTML in text panels
+- [x] Metrics are low-cardinality with fixed label sets; nothing sensitive (secrets, tokens, hashes, usernames, addresses, hostnames, paths) reaches `/metrics`; hundreds of hostile inputs do not grow the series count; a leaking future collector is neutralised by the sanitiser
+- [x] No metric, alert or panel exists for unfinished components (mechanical test against the Master Contract list); a database outage yields absent series, never zeros
+- [x] Monitoring failures cannot break the dashboard or the application (listener bind failure, snapshot errors, summary errors)
+- [x] Rules validated with real `promtool` (config, rules, 7 rule unit tests); a real Prometheus scraped the real app (PostgreSQL) and node_exporter, evaluated all rules without error and executed every dashboard query
+- [x] cAdvisor is optional and never receives the Docker socket or Docker data
+
 ## Operator evidence still required
 - [ ] Host baseline (SSH key-only, no root login, default-deny firewall incl. `DOCKER-USER`, IPv6, upgrades, CAA, chrony)
 - [ ] DNS, TLS issuance, HSTS review; external port scan shows only 80/443
 - [ ] `docker compose up` actually starts: images build, `migrate` completes, `app` healthy, roles created (no Docker daemon was available)
-- [ ] `caddy validate`; real Caddy log lines contain no cookies/authorization/full IPs; Caddy forwards a single client address in `X-Forwarded-For` from the `172.29.10.0/24` network
+- [ ] Prometheus, Grafana, node-exporter (and cAdvisor if enabled) start and become healthy in Compose; Grafana loads the provisioned datasource and dashboards and shows data; the admin-password reset command in `docs/grafana-access.md` works
+- [ ] `caddy validate`; Caddy proxies Grafana over HTTPS; real Caddy log lines contain no cookies/authorization/full IPs; Caddy forwards a single client address in `X-Forwarded-For` from the `172.29.10.0/24` network
 - [ ] Base image digests pinned; dependency audit
 - [ ] Independent security review of the Phase 2 diff (not done)
 

@@ -37,6 +37,7 @@ _ENV_FIELDS = {
     "TD_SECRET_KEY": "secret_key",
     "TD_DB_USER": "database.user",
     "TD_DB_PASSWORD": "database.password",
+    "TD_METRICS_BIND": "monitoring.bind_address",
 }
 # Accepted but not mapped onto Settings (used by profile selection, the migrate command and
 # environment-file validation).
@@ -119,6 +120,32 @@ class AuthSettings(BaseModel):
         return self
 
 
+class MonitoringSettings(BaseModel):
+    """Internal metrics listener. It is never routed by Caddy and never published on the host."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = True
+    bind_address: str = "127.0.0.1"
+    port: int = Field(9464, ge=1024, le=65535)
+    allowed_scrapers: tuple[str, ...] = ("127.0.0.1/32", "172.29.20.0/24")
+    cache_seconds: int = Field(10, ge=1, le=60)
+    chain_verify_interval_seconds: int = Field(300, ge=30, le=3600)
+
+    @model_validator(mode="after")
+    def _addresses(self) -> MonitoringSettings:
+        try:
+            ipaddress.ip_address(self.bind_address)
+        except ValueError as exc:
+            raise ValueError("monitoring.bind_address must be an IP address") from exc
+        for item in self.allowed_scrapers:
+            try:
+                ipaddress.ip_network(item, strict=False)
+            except ValueError as exc:
+                raise ValueError("monitoring.allowed_scrapers must be IP networks") from exc
+        return self
+
+
 class DatabaseSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -196,6 +223,7 @@ class Settings(BaseModel):
     trusted_proxies: tuple[str, ...] = ()
     auth: AuthSettings = AuthSettings()
     database: DatabaseSettings = DatabaseSettings()
+    monitoring: MonitoringSettings = MonitoringSettings()
     pair_policy: PairPolicy
 
     @field_validator("trusted_proxies")
@@ -236,6 +264,39 @@ def valid_hostname(value: str | None) -> bool:
     return bool(value) and _HOSTNAME_RE.fullmatch(value or "") is not None
 
 
+# Explicit list: Python's is_private also accepts reserved documentation ranges
+# (e.g. 203.0.113.0/24), which must not count as internal.
+_INTERNAL_NETS = tuple(
+    ipaddress.ip_network(n)
+    for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "fc00::/7", "::1/128")
+)
+
+
+def _internal_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return any(address.version == n.version and address in n for n in _INTERNAL_NETS)
+
+
+def _internal_network(net: ipaddress.IPv4Network | ipaddress.IPv6Network) -> bool:
+    return any(net.version == n.version and net.subnet_of(n) for n in _INTERNAL_NETS)  # type: ignore[arg-type]
+
+
+def monitoring_problems(monitoring: MonitoringSettings) -> list[str]:
+    """The metrics listener must sit on one specific private address, reachable only by scrapers."""
+    problems: list[str] = []
+    bind = ipaddress.ip_address(monitoring.bind_address)
+    if bind.is_unspecified:
+        problems.append("monitoring.bind_address must be a specific address, not a wildcard")
+    elif not _internal_address(bind):
+        problems.append("monitoring.bind_address must be a private or loopback address")
+    for item in monitoring.allowed_scrapers:
+        net = ipaddress.ip_network(item, strict=False)
+        minimum = 16 if net.version == 4 else 48
+        if net.prefixlen < minimum or not _internal_network(net):
+            problems.append("monitoring.allowed_scrapers must be small private networks")
+            break
+    return problems
+
+
 def production_problems(settings: Settings) -> list[str]:
     """Return every reason the settings are unsafe for production (empty list means acceptable)."""
     problems: list[str] = []
@@ -262,6 +323,7 @@ def production_problems(settings: Settings) -> list[str]:
         problems.append("argon2 parameters are below the production minimum (19456 KiB, t=2)")
     if auth.password_min_length < 14:
         problems.append("password_min_length must be at least 14 in production")
+    problems.extend(monitoring_problems(settings.monitoring))
     cookie = settings.cookie
     if cookie is None:
         problems.append("production cookie settings are absent")

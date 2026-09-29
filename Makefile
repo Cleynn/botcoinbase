@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: format lint typecheck test up down logs health verify-security-config verify-security-config-example
+.PHONY: format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status
 
 format:
 	uv run ruff check --fix .
@@ -36,3 +36,11 @@ verify-security-config:
 # Structure-only check against .env.example (placeholders allowed). Not a production check.
 verify-security-config-example:
 	$(PY) scripts/verify_security_config.py --env-file .env.example --example
+
+# Static checks for Prometheus, rules, Grafana provisioning/dashboards, Compose and Caddy (see docs/monitoring.md).
+verify-monitoring-config:
+	$(PY) scripts/verify_monitoring_config.py --env-file .env
+
+# Read-only: asks Prometheus (inside its container) for target health and firing alerts.
+monitoring-status:
+	$(PY) scripts/monitoring_status.py

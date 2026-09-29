@@ -1,0 +1,16 @@
+# One read-only datasource. No credentials, no secure JSON data. Grafana reaches Prometheus over the
+# internal mon_query network only.
+apiVersion: 1
+prune: true
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: GET
+      timeInterval: 15s
+      manageAlerts: false

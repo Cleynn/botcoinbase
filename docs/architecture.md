@@ -9,7 +9,9 @@ Internet -> caddy (TCP 80/443, only published ports)
               |-- edge_app (internal) -----> app:8000  (FastAPI + Jinja2 + HTMX)
               '-- edge_grafana (internal) -> 503 placeholder (Grafana profile "monitoring", Phase 3)
 backend (internal): postgres, redis, app (PostgreSQL only), migrate (one-shot), ctl (profile ops)
-monitoring (internal): prometheus, grafana   (profile "monitoring", off by default, placeholders)
+mon_scrape (internal, 172.29.20.0/24): prometheus, app (metrics listener 172.29.20.10:9464), node-exporter, cadvisor (optional)
+mon_query (internal): prometheus, grafana
+edge_grafana (internal): caddy, grafana
 ```
 
 - Only `edge_public` has outbound access, and only Caddy is attached to it. The app has **no egress**.
@@ -32,5 +34,8 @@ monitoring (internal): prometheus, grafana   (profile "monitoring", off by defau
 - Logging: `config/logging.yaml` + `RedactingFormatter` (credentials, cookies, URLs with passwords, IPs, exception text).
 
 ## Out of scope in Phase 1
-Monitoring, exchange adapter, orders,
+Exchange adapter, orders,
 pairs, data import, LLM packages/proposals, bot controls, backups.
+
+## Monitoring (Phase 3)
+Prometheus scrapes the app's internal metrics listener, node-exporter and (optionally) cAdvisor every 15 s over `mon_scrape`; Grafana queries Prometheus over `mon_query` and is published only through Caddy on its own hostname. The app and Grafana share no network; Prometheus and Grafana have no outbound route. `app/monitoring/`: `metrics.py` (catalogue, label policy, sanitiser, listener), `health.py` (cached snapshot and dashboard summary), `collectors.py` (snapshot to metrics), `alerts.py` (in-process attention items, rule catalogue). See `docs/monitoring.md`.

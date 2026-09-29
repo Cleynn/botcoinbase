@@ -101,6 +101,24 @@ deviations are **prohibited** while no independent reviewer exists (SD-6).
 - Not verified: container start and image build (no Docker daemon), `caddy validate`, Caddy forwarding, DNS/TLS/firewall, base-image digests.
 - review: SELF
 
+### DEC-011: Phase 3 monitoring (2026-09-29)
+- Implemented from the Phase 3 prompt: Prometheus, Grafana, node-exporter, optional cAdvisor, internal application metrics, recording and alert rules, Grafana provisioning and five dashboards, a monitoring summary on the main dashboard. No external alert transport and no monitoring-to-bot action exists.
+- **Metrics honesty (requirement 19):** only metrics with a real source are published (19 catalogued families plus `process_*`/`python_*`). The Master Contract's `tradingdots_bot_*` (except `tradingdots_bot_info`), `tradingdots_pair_*` and `tradingdots_llm_*` metrics are **reserved, not published**; tests enforce this in the catalogue, the live output, the rules and the dashboards. Consequently the Risk and Failsafes dashboard shows *security* failsafes, and Execution and Reconciliation contains only context and an explanation.
+- **No alerts for unbuilt components** (baseline used `absent_over_time` for subsystems; that would fire permanently now). They are listed as reserved in `docs/alert-policy.md`.
+- **Metrics are served by a separate internal listener** (private bind, allowed scrapers only), not by FastAPI, so the web port and Caddy can never expose them. A bind failure is reported on the dashboard and does not stop the web application. Baseline BI-27 ("web process has no background tasks") is relaxed by one daemon thread serving `/metrics`; it holds no credentials of its own and reads only the cached snapshot.
+- **The web tier never queries Prometheus** (baseline BI-27/CI-8). The dashboard summary is computed in-process from the same snapshot; the "Alerts" tile stays `Not available`. VIEWERs see no audit event counts or positions.
+- **Grafana:** own admin user `td-admin`; a required unique `GRAFANA_SECRET_KEY` (Grafana's built-in default key is public); alerting, metrics, plugins, sharing and update checks off; dashboards and the single credential-less datasource provisioned read-only. The optional Caddy second layer (baseline SD-2/B-8) is documented, not enabled.
+- **cAdvisor** is optional (profile `cadvisor`) and mounts neither the Docker socket nor `/var/lib/docker`; containers are identified by cgroup id. Untested here.
+- **node-exporter** runs non-root with read-only host mounts but without host networking, so its network metrics describe its own namespace (documented on the panel).
+- Static addresses: `172.29.20.0/24` for `mon_scrape` (app at `.10`), alongside `172.29.10.0/24` for `edge_app`. If they clash with a host network, change Compose and `monitoring.allowed_scrapers`/`trusted_proxies` together.
+- **Files beyond the Phase 3 allowed list** (each minimal): `app/config.py` (monitoring block, `TD_METRICS_BIND`, production rules), `app/storage/repositories.py` (a read-only `MonitoringRepository` for aggregate queries), `app/monitoring/` is new as listed, `.env.example` and `scripts/verify_security_config.py` (`GRAFANA_SECRET_KEY`), `pyproject.toml`/`uv.lock` (`prometheus-client`, dev `promql-parser`, `pgserver` earlier; version 0.3.0), `Makefile` (two targets), `docs/architecture.md`, `docs/threat-model.md`, `docs/decisions.md`, `README.md`, and tests: `tests/unit/test_config.py`, `tests/security/test_no_public_internal_ports.py`, `tests/security/test_no_secret_leakage.py`, `tests/security/test_authorization_boundaries.py`, plus new `tests/unit/test_metrics.py` etc. as listed.
+- review: SELF (non-security deviations). **No independent security review has been performed.**
+
+### DEC-012: Phase 3 verification record
+- Real tools: `promtool` 2.53.0 (config, rules, 7 rule unit tests) and a real Prometheus 2.53.0 scraping the real application (PostgreSQL 16) and node_exporter 1.8.1, evaluating all 28 rules and executing every dashboard query; behaviour of the disabled lifecycle/admin APIs confirmed against the real binary. Grafana could **not** be run (download host blocked).
+- Not verified: container start and health checks for the new services, Caddy proxying Grafana, Grafana first start and rendering, cAdvisor, resource estimates, host mounts on the VPS.
+- review: SELF
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

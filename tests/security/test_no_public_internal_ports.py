@@ -122,6 +122,7 @@ def _good_env() -> dict[str, str]:
         "POSTGRES_PASSWORD": secrets.token_urlsafe(48),
         "REDIS_PASSWORD": secrets.token_urlsafe(48),
         "GRAFANA_ADMIN_PASSWORD": secrets.token_urlsafe(48),
+        "GRAFANA_SECRET_KEY": secrets.token_urlsafe(48),
         "TD_DB_APP_PASSWORD": secrets.token_urlsafe(48),
         "TD_DB_CTL_PASSWORD": secrets.token_urlsafe(48),
     }
@@ -136,6 +137,8 @@ def test_env_validator_accepts_good_and_rejects_bad(verify: ModuleType) -> None:
         ("POSTGRES_PASSWORD", "CHANGE_ME"),
         ("REDIS_PASSWORD", ""),
         ("GRAFANA_ADMIN_PASSWORD", "short"),
+        ("GRAFANA_SECRET_KEY", "SW2YcwTIb9zpOOhoPsMm"),
+        ("GRAFANA_SECRET_KEY", ""),
         ("TD_DB_APP_PASSWORD", "CHANGE_ME"),
         ("TD_DB_APP_PASSWORD", ""),
         ("TD_DB_CTL_PASSWORD", "short"),
@@ -161,7 +164,8 @@ def test_compose_gives_each_service_only_its_own_database_role(compose: dict[str
 def test_app_reaches_the_database_only_over_an_internal_network(compose: dict[str, Any]) -> None:
     services, networks = compose["services"], compose["networks"]
     assert "backend" in services["app"]["networks"] and networks["backend"]["internal"] is True
-    assert set(services["app"]["networks"]) == {"edge_app", "backend"}
+    # edge_app (Caddy), backend (database), mon_scrape (Prometheus); never edge_public or Grafana's
+    assert set(services["app"]["networks"]) == {"edge_app", "backend", "mon_scrape"}
     assert "edge_public" not in services["app"]["networks"]  # the app has no outbound route
 
 

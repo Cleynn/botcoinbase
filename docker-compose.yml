@@ -81,9 +81,15 @@ services:
       TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
       TD_DB_USER: td_app
       TD_DB_PASSWORD: ${TD_DB_APP_PASSWORD:?set in .env}
+      # Internal metrics listener: bound to this static address on mon_scrape only, never published.
+      TD_METRICS_BIND: 172.29.20.10
     read_only: true
     tmpfs: ["/tmp:size=16m"]
-    networks: [edge_app, backend]
+    networks:
+      edge_app: {}
+      backend: {}
+      mon_scrape:
+        ipv4_address: 172.29.20.10
     depends_on:
       migrate: {condition: service_completed_successfully}
     healthcheck:
@@ -166,37 +172,144 @@ services:
     mem_limit: 256m
     pids_limit: 100
 
-  # ---- Placeholders (profile "monitoring"; not routed by Caddy until Phase 3) ----
+  # ---- Monitoring (Phase 3): observational and read-only, nothing here is published ----------
   prometheus:
     <<: *hardening
-    profiles: [monitoring]
     image: prom/prometheus:v2.53.0
+    user: "65534:65534"
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
       - --storage.tsdb.retention.size=15GB
-    volumes: [prometheus_data:/prometheus]
-    networks: [monitoring]
+      - --web.listen-address=:9090
+      - --no-web.enable-lifecycle
+      - --no-web.enable-admin-api
+      - --log.level=info
+    volumes:
+      - prometheus_data:/prometheus
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
+      - ./infra/monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    networks: [mon_scrape, mon_query]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     mem_limit: 1536m
     pids_limit: 200
 
+  node-exporter:
+    <<: *hardening
+    image: prom/node-exporter:v1.8.1
+    user: "65534:65534"
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containerd/.+)($|/)
+      - --web.listen-address=:9100
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    read_only: true
+    tmpfs: ["/tmp:size=8m"]
+    networks: [mon_scrape]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 64m
+    pids_limit: 50
+
   grafana:
     <<: *hardening
-    profiles: [monitoring]
     image: grafana/grafana-oss:11.1.0
+    user: "472"
     environment:
+      GF_SECURITY_ADMIN_USER: td-admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
-      GF_AUTH_ANONYMOUS_ENABLED: "false"
-      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY:?set in .env}
       GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
       GF_SECURITY_ALLOW_EMBEDDING: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
       GF_PUBLIC_DASHBOARDS_ENABLED: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # No alert delivery of any kind: Grafana alerting is off, alerts are only displayed.
+      GF_ALERTING_ENABLED: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "false"
+      GF_METRICS_ENABLED: "false"
+      GF_LIVE_MAX_CONNECTIONS: "0"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 15s
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana-dashboards/overview.json
       GF_SERVER_DOMAIN: ${TD_GRAFANA_HOSTNAME:?set in .env}
       GF_SERVER_ROOT_URL: https://${TD_GRAFANA_HOSTNAME:?set in .env}/
-    volumes: [grafana_data:/var/lib/grafana]
-    networks: [edge_grafana, monitoring]
+      GF_LOG_MODE: console
+      GF_LOG_LEVEL: warn
+      GF_PATHS_LOGS: /tmp/grafana-logs
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana-dashboards:ro
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    networks: [edge_grafana, mon_query]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     mem_limit: 512m
     pids_limit: 200
+
+  # OPTIONAL (profile "cadvisor", off by default): per-container CPU/memory.
+  #   docker compose --profile cadvisor up -d cadvisor
+  # It deliberately does NOT mount the Docker socket or /var/lib/docker (either would give a
+  # compromised monitoring container control over, or secrets from, every container). Containers
+  # are therefore identified by cgroup id, not name. UNTESTED: no Docker daemon was available when
+  # this was written. See docs/monitoring.md before enabling.
+  cadvisor:
+    <<: *hardening
+    profiles: [cadvisor]
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    command:
+      - --docker_only=false
+      - --store_container_labels=false
+      - --housekeeping_interval=30s
+      - --enable_metrics=cpu,memory,oom_event
+      - --listen_ip=0.0.0.0
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    networks: [mon_scrape]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 256m
+    pids_limit: 100
 
 networks:
   edge_public: {}                    # Caddy only: the sole network with outbound access
@@ -205,9 +318,14 @@ networks:
     ipam:
       config:
         - subnet: 172.29.10.0/24
-  edge_grafana: {internal: true}     # Caddy <-> Grafana placeholder
+  edge_grafana: {internal: true}     # Caddy <-> Grafana. Shares nothing with the app.
   backend: {internal: true}          # PostgreSQL, Redis, app (DB only), migrate, ctl
-  monitoring: {internal: true}       # Prometheus <-> Grafana
+  mon_scrape:                        # Prometheus scrapes app, node-exporter, cAdvisor. Static subnet:
+    internal: true                   # the app binds its metrics listener to 172.29.20.10 only.
+    ipam:
+      config:
+        - subnet: 172.29.20.0/24
+  mon_query: {internal: true}        # Prometheus <-> Grafana
 
 volumes:
   caddy_data: {}

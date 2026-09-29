@@ -1,0 +1,13 @@
+# Dashboards are code: provisioned read-only, cannot be edited or deleted from the UI.
+apiVersion: 1
+providers:
+  - name: tradingdots
+    orgId: 1
+    folder: TradingDots
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana-dashboards
+      foldersFromFilesStructure: false

@@ -346,6 +346,50 @@ class AuditRepository:
         return ChainStatus(True, checked, complete)
 
 
+class MonitoringRepository:
+    """Read-only aggregate queries for metrics and the monitoring summary."""
+
+    def __init__(self, conn: Conn) -> None:
+        self._conn = conn
+
+    def probe(self) -> None:
+        self._conn.execute("SELECT 1").fetchone()
+
+    def schema_version(self) -> int | None:
+        row = self._conn.execute("SELECT version FROM schema_meta WHERE id").fetchone()
+        return int(row["version"]) if row else None
+
+    def audit_counts(self) -> dict[str, int]:
+        rows = self._conn.execute(
+            "SELECT event_code, count(*) AS n FROM audit_events GROUP BY event_code"
+        ).fetchall()
+        return {r["event_code"]: int(r["n"]) for r in rows}
+
+    def audit_last_seq(self) -> int:
+        row = self._conn.execute("SELECT last_seq FROM audit_head WHERE id").fetchone()
+        return int(row["last_seq"]) if row else 0
+
+    def audit_last_event_at(self) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT occurred_at FROM audit_events ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        return row["occurred_at"] if row else None
+
+    def active_sessions(self, now: datetime, idle_cutoff: datetime) -> int:
+        row = self._conn.execute(
+            "SELECT count(*) AS n FROM sessions WHERE revoked_at IS NULL "
+            "AND absolute_expires_at > %s AND last_seen_at > %s",
+            (now, idle_cutoff),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def users_by_role(self) -> dict[str, int]:
+        rows = self._conn.execute(
+            "SELECT role, count(*) AS n FROM users WHERE disabled_at IS NULL GROUP BY role"
+        ).fetchall()
+        return {r["role"]: int(r["n"]) for r in rows}
+
+
 @dataclass
 class Repos:
     """All repositories bound to one connection/transaction."""
@@ -354,6 +398,7 @@ class Repos:
     sessions: SessionRepository
     attempts: LoginAttemptRepository
     audit: AuditRepository
+    monitoring: MonitoringRepository
 
     @classmethod
     def bind(cls, conn: Conn) -> Repos:
@@ -362,4 +407,5 @@ class Repos:
             SessionRepository(conn),
             LoginAttemptRepository(conn),
             AuditRepository(conn),
+            MonitoringRepository(conn),
         )

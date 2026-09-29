@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -21,8 +23,11 @@ from app.auth.rate_limit import LoginRateLimiter
 from app.auth.session import AuthService, derive_key
 from app.config import ConfigError, Settings, load_settings
 from app.domain.models import Clock, SystemClock
+from app.monitoring.collectors import build_monitoring
 from app.storage.database import Storage
 from app.web.view_models import WEB_DIR, Renderer
+
+logger = logging.getLogger("app")
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
@@ -87,7 +92,9 @@ def create_app(
     settings = settings or load_settings()
     storage = storage or Storage(settings.database)
     storage.check_schema()  # refuse to start against an older or newer schema
-    services = build_services(settings, storage, clock or SystemClock())
+    clock = clock or SystemClock()
+    services = build_services(settings, storage, clock)
+    monitoring = build_monitoring(storage=storage, clock=clock, settings=settings)
 
     app = FastAPI(
         title=constants.APP_NAME,
@@ -99,6 +106,7 @@ def create_app(
         dependencies=[Depends(access_guard), Depends(csrf_guard)],
     )
     app.state.services = services
+    app.state.monitoring = monitoring  # metrics are served by a separate internal listener
     register_error_handlers(app)
 
     allowed_hosts = ["localhost", "127.0.0.1"]
@@ -112,7 +120,17 @@ def create_app(
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Any) -> Response:
         request.state.request_id = uuid4().hex
-        response: Response = await call_next(request)
+        started = time.perf_counter()
+        status = 500
+        try:
+            response: Response = await call_next(request)
+            status = response.status_code
+        finally:
+            try:  # observing must never affect the response
+                template = getattr(request.scope.get("route"), "path", None)
+                monitoring.metrics.observe_request(template, status, time.perf_counter() - started)
+            except Exception:  # noqa: BLE001
+                logger.error("could not record request metrics")
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
         response.headers["X-Request-ID"] = request.state.request_id

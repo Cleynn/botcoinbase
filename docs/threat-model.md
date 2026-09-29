@@ -32,3 +32,16 @@ Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange fail
 | T20 | Web-process compromise creating users | Only `td_ctl` can INSERT users; but a compromised web process can still act as signed-in users and change passwords (RR-1) | Partly mitigated; live blocker |
 | T21 | Lock-out of the ADMIN by attackers | Account-wide throttle can be triggered by distributed guessing; the window is 15 min and the host CLI can always rotate the password | Accepted |
 | T22 | Wrong client identity behind the proxy | `X-Forwarded-For` honoured only from `trusted_proxies`; mismatch with the Compose subnet would make throttling global | Runbook warning; unverified on a host |
+
+## Phase 3 additions
+| # | Threat | Mitigation | Status |
+|---|---|---|---|
+| T23 | Metrics exposed publicly | Separate internal listener bound to a private address, allowed scrapers only, never proxied; Caddy 404 for `/metrics*`; no host ports for any monitoring service | Tested; Caddy/host unverified |
+| T24 | Sensitive data or identities in metrics/dashboards | Fixed label sets, forbidden label names, sanitiser, no free text; dashboards checked for the same | Tested (incl. hostile input) |
+| T25 | Cardinality explosion by an attacker | Route templates only, fixed value sets, 100-series cap per family | Tested |
+| T26 | Monitoring used as a control plane | No Alertmanager/webhook/transport, Grafana alerting off, Prometheus lifecycle/admin APIs disabled, rules restricted to labels/annotations without actions or URLs, read-only provisioned dashboards, web tier never queries Prometheus | Tested (real Prometheus) |
+| T27 | Grafana takeover | Unique admin user and required strong secrets (no defaults), login protection, no sign-up/anonymous/embedding/plugins, secure strict cookies, isolated from the app network | Config tested; Grafana not run here |
+| T28 | Compromised monitoring container reaching the host | Non-root, read-only rootfs, `cap_drop: ALL`, read-only host mounts, no Docker socket or Docker data (cAdvisor included), internal networks only | Config tested; runtime unverified |
+| T29 | Monitoring outage affecting the application | Listener failure is non-fatal; snapshot and summary never raise; database outage becomes `db_up 0` | Tested |
+| T30 | Misleading "all clear" from missing data | Absent series instead of zeros; TargetDown/absent alerts; dashboards state what is not measured | Tested |
+| T31 | No alert delivery (by design) | Alerts are only visible if someone looks: daily check in the runbook; residual risk accepted | Accepted |

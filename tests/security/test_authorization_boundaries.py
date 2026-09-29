@@ -118,7 +118,7 @@ def test_path_tricks_do_not_reach_admin_pages_as_a_viewer(
     viewer_client: TestClient, path: str
 ) -> None:
     response = viewer_client.get(path, follow_redirects=True)
-    assert response.status_code != 200 or "Audit chain" not in response.text
+    assert response.status_code != 200 or "Audit events, newest first" not in response.text
 
 
 def test_static_mount_does_not_expose_application_files(client: TestClient) -> None:
