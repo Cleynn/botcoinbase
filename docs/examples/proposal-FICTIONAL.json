@@ -1,0 +1,17 @@
+{
+  "proposal_version": 1,
+  "proposal_id": "prop-2026-001",
+  "linked_review_package_id": "00000000-0000-4000-8000-00000000abcd",
+  "linked_review_package_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "category": "strategy",
+  "summary": "FICTIONAL EXAMPLE: require a wider minimum band before the grid is built.",
+  "evidence_references": ["data/backtest_runs.jsonl#L1", "efficiency_summary.json"],
+  "assumptions": ["Fees stay at the operator-attested rate."],
+  "suggested_change": "Raise the minimum band ratio from 0.02 to 0.03 so that cells clear the fees.",
+  "expected_benefit": "Fewer fee-negative cycles in the stress scenario.",
+  "risk_tradeoffs": "Fewer trading windows and lower activity overall.",
+  "required_validation": "Walk-forward backtest on a frozen snapshot, then a paper run of at least seven days.",
+  "rollback_plan": "Revert the parameter through a reviewed release and rerun the backtest.",
+  "should_remain_no_trade_until_validated": true,
+  "no_profit_guarantee": true
+}

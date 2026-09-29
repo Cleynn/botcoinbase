@@ -17,3 +17,8 @@ To be written in the phase that introduces the behavior. Do not paste unverified
 - `TD_REVIEW_DIR` (`review.dir`, default `/review`): where review packages live. Refused if relative, containing `..`, containing `static`, `web`, `public` or `templates`, or under `/app`. `review.max_bytes` (default 20 MiB, at most 50 MiB), `review.max_rows_per_file` (default 20000), `review.max_period_days` (at most 90).
 - Whether the feature is on is a database flag (DISABLED by default) changed only by the ADMIN confirmation chain, not by configuration; retention days are chosen when enabling (1-90).
 - The `app` service mounts the `review_packages` volume read-only; only `batch` mounts it read-write.
+
+## Phase 7 additions
+- `TD_PROPOSAL_DIR` (`proposals.dir`, default `/proposals`): where imported proposal files live. Refused if relative, containing `..`, containing `static`, `web`, `public` or `templates`, or under `/app`. `proposals.max_bytes` (default 128 KiB), `proposals.max_depth` (6), `proposals.retention_days` (90).
+- Whether import is on is a database flag (DISABLED by default) changed only by the ADMIN confirmation chain.
+- The `proposals` volume is mounted read-write on `app` and `batch` only.

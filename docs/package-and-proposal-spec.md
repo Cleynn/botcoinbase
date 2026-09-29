@@ -1,7 +1,7 @@
 # Review package and proposal specification
 
 Status: **review packages: implemented (Phase 6, see `docs/review-packages.md`, DEC-017).
-Proposals: NOT implemented.** DEC-000 is unacknowledged.
+Proposals: implemented (Phase 7, see `docs/proposals.md`, DEC-019), with the deviations listed there.** DEC-000 is unacknowledged.
 
 Source of truth: `baseline/TRADINGDOTS_HANDOFF.md`, Sections 4.3 and 4.4; Master Contract Part 1.
 

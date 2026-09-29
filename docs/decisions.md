@@ -183,6 +183,20 @@ Implemented: disabled-by-default feature flag, ADMIN-only enable/disable/create 
 - Not verified: Docker start of `batch`/`app` with the shared `review_packages` volume (no Docker daemon), `docker compose config`, Grafana, any real Coinbase data (AS-C1; all fixtures synthetic).
 - review: SELF
 
+### DEC-019: Phase 7 imported LLM proposals (2026-09-29)
+Implemented: disabled-by-default import; ADMIN-only chain (CSRF + fresh single-use reauth + exact phrases); text/plain and application/json only; strict 15-field schema with review-package id and hash; policy triage and deterministic risk assessment; proposal lifecycle enforced by database triggers; manual change request; attestations; proposal UI with the label UNTRUSTED ADVISORY INPUT; host CLI (`proposal validate|cleanup|list`); aggregate metrics. No automatic application, no LLM call, no mutation of code, configuration, orders, pairs or system state. Choices and deviations:
+- **Numbering.** The request calls this Phase 7; the baseline calls it Phase 8 (see DEC-017). Scope followed the request.
+- **Web stores, host validates.** The web tier checks type, extension, bytes, UTF-8 and size and stores opaque bytes; it never parses the JSON. `td_ctl` (host CLI in `batch`) parses, checks the schema and package link, screens policy and assesses risk. Two consequences: a proposal is IMPORTED until an operator runs `make proposal-validate`, and a compromised web process cannot mark its own file VALIDATED (trigger-enforced actor classes).
+- **File storage instead of a database blob** (baseline records proposals in the database, BQ-2): the file is kept for byte-exactness and the row keeps hash, size, parsed fields and findings. The database, not the file, is authoritative for state.
+- **Disable, review and close are CSRF-only**, because each moves toward "less happens". Import, enable, change request and attestations need a fresh reauth.
+- **Policy is over-inclusive.** Negated mentions are still blocked; the only exemption is a plain "no guarantee of profit" disclaimer. The policy is not a security boundary: the boundary is that no proposal action can change anything.
+- **No delete.** Bytes of CLOSED/REJECTED proposals are purged after 90 days by `proposal cleanup`; the row and audit trail stay.
+- **Limits:** 128 KiB per proposal, 10 imports per hour, 20 per day, 200 MB stored; upload route only gets a 400 KiB body cap and CSRF accepts exactly one file part there.
+- **Attestations are human statements checked against evidence** (release reference; existing BACKTEST/WALK_FORWARD report ids created after the change request; at least two PAPER_DAILY reports spanning 7 days). They prove existence of evidence, not correctness of the change.
+- **Metrics extension:** four `tradingdots_proposal*` / `tradingdots_llm_proposal*` families; aggregate only.
+- **Defects found and fixed while testing:** policy gaps for passive/inflected verbs, standalone "auto apply", `api_key`-style nouns and short proximity windows; regex tables needed raw strings.
+- review: SELF. **No independent security review has been performed.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

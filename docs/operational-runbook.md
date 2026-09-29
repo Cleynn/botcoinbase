@@ -97,3 +97,12 @@ Snapshot files are read-only; back up the `datasets` volume with the database. N
 5. `make review-cleanup` (schedule it): expires packages past retention, removes their files, removes orphans. Everything is audited.
 6. To stop: disable the feature (ADMIN, `DISABLE READ-ONLY REVIEW PACKAGES`). Downloads and requests stop at once.
 If a package turns CORRUPT, do not use it; request a new one and investigate the volume.
+
+## Phase 7: imported proposals (operator steps)
+1. As ADMIN open Proposals, confirm the password and type `ENABLE UNTRUSTED PROPOSAL IMPORT`.
+2. Import one JSON file or pasted text (confirm the password, type `IMPORT UNTRUSTED LLM PROPOSAL`). It is stored, not trusted.
+3. On the host: `make proposal-validate`. A REJECTED proposal shows the rule ids; fix the source document and import a new one (the same bytes may be re-imported only after REJECTED or CLOSED).
+4. Read a VALIDATED proposal as advice. Record a review, then optionally create a manual change request (`CREATE MANUAL CHANGE REQUEST FOR PROPOSAL <id>`). That records intent only.
+5. Make the actual change as a normal reviewed change; then attest IMPLEMENTED, BACKTESTED (report ids) and PAPER_VALIDATED (paper reports), and close.
+6. `make proposal-cleanup` (schedule it): removes bytes of old CLOSED/REJECTED proposals and orphan files.
+7. To stop: Disable import (one click). Existing proposals stay readable.

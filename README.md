@@ -52,3 +52,6 @@ An ADMIN can enable (disabled by default), request, verify and download a saniti
 checksummed ZIP to give to an AI assistant by hand. It cannot trade or change any setting, no LLM is
 called, and no proposal is imported. Build/verify/cleanup run on the host (`make review-*`). See
 `docs/review-packages.md`; fictional package README: `docs/examples/review-package-README-FICTIONAL.md`.
+
+## Imported proposals (Phase 7)
+An ADMIN can enable (disabled by default) and import a plain-text/JSON proposal written by an AI assistant. It is stored opaquely, validated on the host against a strict schema and policy, shown escaped and labelled **UNTRUSTED ADVISORY INPUT**, and can lead to a *manual* change request. Nothing is ever applied and no LLM is called. See `docs/proposals.md`; fictional example: `docs/examples/proposal-FICTIONAL.json`.

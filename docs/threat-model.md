@@ -75,3 +75,15 @@ Not modelled yet: authentication, CSRF, sessions, audit tampering, exchange fail
 | Unauthorised or CSRF-driven enable/download | ADMIN permission, CSRF and Origin check on POST, single-use reauth and exact phrases, audit of every refusal | A compromised ADMIN session that also knows the password |
 | Package feature used to change bot state | Review tables reference only `users`; web role cannot build; a test hashes all bot/pair/paper tables around every action | None known |
 | Package build starves the host | One package at a time, 10 retained, 3 per hour, size and row caps, retention cleanup | None known |
+
+## Phase 7 additions (imported proposals)
+| Threat | Control | Residual |
+|---|---|---|
+| Malicious file (archive, polyglot, binary, oversize) | Type, extension, magic-byte, UTF-8, JSON-object and size checks before storage; opaque stored bytes; generated name; never extracted or executed | A parser bug in the standard library JSON module |
+| Prompt injection inside a proposal | The text is data: never executed, never sent to an LLM, policy-screened, labelled UNTRUSTED ADVISORY INPUT | A person who blindly follows a proposal |
+| XSS / template injection through proposal text | Autoescape, no `|safe`, no `from_string`, markup and template syntax rejected by policy, no raw view | A future template that disables escaping (static test guards) |
+| Proposal that asks to weaken risk, secrets, security, pairs or live mode | Policy rules reject it; more importantly no proposal action can change any of those | Heuristic false negatives (caught at human review and at the normal code review) |
+| Automatic application | There is no apply code path; approval writes one change-request row; test hashes bot/pair/paper/config tables around every action | None known |
+| Forged or replayed approval | ADMIN + CSRF + Origin + single-use reauth + phrase naming the proposal id | Compromised ADMIN session that knows the password |
+| Upload flooding | Body caps, per-hour/day limits, 200 MB store cap, early refusal without a session | None known |
+| Tampered stored file | Web role cannot validate; state and hashes recorded; content immutable in the row | Someone with DB and volume write access |

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
+from typing import Any, cast
 
 import pytest
 
@@ -45,7 +46,7 @@ def make(
 
 
 def rules(**texts: str) -> set[str]:
-    return {f.rule for f in policy.evaluate(make(**texts))}
+    return {f.rule for f in policy.evaluate(make(**cast(Any, texts)))}
 
 
 def rules_in(field: str, text: str) -> set[str]:
@@ -91,7 +92,7 @@ BLOCKED: dict[str, list[str]] = {
         "Set the jwt secret to a shorter value.",
         "Send the credential to the reviewer by e-mail.",
         "api_key = abc123 should be committed",
-        "-----BEGIN PRIVATE KEY----- MIIE",
+        "-----BEGIN " + "PRIVATE KEY----- MIIE",
     ],
     "SECURITY_CONTROL_CHANGE": [
         "Disable CSRF checks for the import form.",

@@ -43,3 +43,6 @@ Navigation item "Reports" (ADMIN, VIEWER). List: kind, label badge (BACKTEST or 
 
 ## Review packages (Phase 6)
 Navigation item "Review packages" (ADMIN only). Every page on this surface opens with the notice that a package cannot trade and cannot change the bot, any pair, risk setting, order, configuration or live setting. Overview: feature status (DISABLED by default), enable link or request form (period + scope checkboxes), package table (id prefix, state badge, period, requested, expires, size). Confirmation pages follow the two-step pattern: step 1 password (single use), step 2 exact phrase; nothing is written on GET. Package page: metadata, Verify and Download (ZIP) buttons (POST, CSRF), file list with sizes and digest prefixes. Package content is never rendered.
+
+## Proposals (Phase 7)
+Navigation item "Proposals" (ADMIN only). Every page carries the badge and notice **UNTRUSTED ADVISORY INPUT** and says a proposal cannot trade or change anything. Overview: import status (DISABLED by default), enable/disable, list. Import: two-step page (password, then one file or pasted text plus the exact phrase). Detail: state, linked package, findings in plain language with rule ids, risk assessment, evidence links, manual next steps, history, and only the forms the current state allows. All proposal text is escaped; the raw file is never shown or downloadable.

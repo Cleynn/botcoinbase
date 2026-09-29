@@ -82,3 +82,13 @@
 - [x] Creation changes no bot, pair, risk, order, ledger, config or gate state (before/after table hashes).
 - [x] Retention cleanup and every action audited; metrics are aggregate counts only.
 - [ ] Shared volume between `batch` (rw) and `app` (ro) in real containers: NOT verified (no Docker daemon).
+
+## Phase 7 (imported proposals)
+- [x] Disabled by default; ADMIN only; enable, import and change-request need CSRF + fresh single-use reauth + exact phrase; a bad file or wrong phrase never spends the reauth.
+- [x] Only text/plain and application/json; archives, PDF, Office, CSV, images, HTML, JS, YAML, XML, shell and binaries refused by extension, MIME and bytes; strict size limits and rates.
+- [x] Generated server-side name outside the web root, mode 0440, no static or GET route; no extraction, eval, templating or unsafe deserialisation (static tests over the source).
+- [x] The web tier never parses proposal JSON; the host validator does (strict schema, unknown fields, duplicate keys, depth, hidden characters).
+- [x] Policy rejects risk bypass, secrets, security controls, API access, live activation, pair state, capital increases, automated orders and auto-application; heuristic, over-inclusive, not a boundary by itself.
+- [x] Lifecycle enforced by database triggers per actor class; approval creates only a manual change request; before/after table fingerprints show nothing else changes.
+- [x] All proposal text auto-escaped; hostile markup and template syntax tested; no inline script or event handlers.
+- [ ] Shared `proposals` volume between `app` and `batch` in real containers: NOT verified (no Docker daemon).

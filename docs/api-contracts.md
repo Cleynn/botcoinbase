@@ -90,3 +90,20 @@ All routes need permission `manage_review_packages` (ADMIN only; VIEWER gets 403
 | POST | `/review/packages/{id}/download` | `csrf_token`; 200 `application/octet-stream` attachment, `nosniff`, `no-store`, sandbox CSP; verified first | 404, 409 (not READY, disabled, corrupt) |
 
 There is no GET download, no static route and no DELETE. Audit events added: `review.enabled`, `review.disabled`, `review.requested`, `review.generating`, `review.ready`, `review.failed`, `review.corrupt`, `review.expired`, `review.verified`, `review.downloaded`, `review.cleanup`, `review.denied`.
+
+## Proposals (Phase 7)
+All routes need permission `manage_proposals` (ADMIN only; VIEWER 403, audited as `authz.denied`). Every POST needs CSRF and a same-origin request. Nothing is written on GET.
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/review/proposals` | status, list |
+| GET/POST | `/review/proposals/import-enable/request`, `/reauth`, `/confirm` | phrase `ENABLE UNTRUSTED PROPOSAL IMPORT` |
+| POST | `/review/proposals/import-disable` | CSRF only |
+| GET | `/review/proposals/import/request` | two-step page |
+| POST | `/review/proposals/import/reauth` | password |
+| POST | `/review/proposals/import/confirm` | multipart, exactly one `file` part **or** `text`, plus `csrf_token`, `confirmation` (`IMPORT UNTRUSTED LLM PROPOSAL`); 303 to the proposal, 400/413/429 |
+| GET | `/review/proposals/{id}` | escaped detail; 404 |
+| POST | `/review/proposals/{id}/review` | `notes`; CSRF only |
+| POST | `/review/proposals/{id}/close` | `reason`; CSRF only |
+| GET/POST | `/review/proposals/{id}/change-request/request`, `/reauth`, `/confirm` | phrase `CREATE MANUAL CHANGE REQUEST FOR PROPOSAL <id>`, `change_type`, `impact_assessment`, `ceilings_unaffected` |
+| GET/POST | `/review/proposals/{id}/attest/{kind}` (implemented, backtested or paper-validated)`/request`, `/reauth`, `/confirm` | reauth, no phrase; `reference` or `report_ids` |
+There is no download, raw-view, apply, approve-and-run or DELETE route. Audit events: `proposal.import_enabled|import_disabled|imported|validating|validated|rejected|reviewed|change_request_created|implemented|backtested|paper_validated|closed|cleanup|denied`.
