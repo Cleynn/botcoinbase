@@ -1,0 +1,156 @@
+# TradingDots Phase 1. Only Caddy publishes host ports (TCP 80 and 443).
+# Prometheus and Grafana are PLACEHOLDERS behind the "monitoring" profile (off by default).
+name: tradingdots
+
+x-hardening: &hardening
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  caddy:
+    <<: *hardening
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs: ["/tmp:size=16m"]
+    read_only: true
+    networks: [edge_public, edge_app, edge_grafana]
+    depends_on:
+      app: {condition: service_healthy}
+    healthcheck:
+      # Validates configuration only; Caddy exposes no admin API or health endpoint.
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    mem_limit: 128m
+    pids_limit: 100
+
+  app:
+    <<: *hardening
+    build: {context: ., dockerfile: Dockerfile}
+    image: tradingdots-app:phase1
+    user: "10001:10001"
+    expose: ["8000"]
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_DEBUG: ${TD_DEBUG:-false}
+      TD_PROFILE: ${TD_PROFILE:-backtest}
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    networks: [edge_app]
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 768m
+    cpus: 1.5
+    pids_limit: 200
+
+  postgres:
+    <<: *hardening
+    image: postgres:16-alpine
+    user: "70:70"
+    environment:
+      POSTGRES_DB: tradingdots
+      POSTGRES_USER: tradingdots
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    tmpfs: ["/tmp:size=64m", "/var/run/postgresql:size=1m"]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradingdots -d tradingdots"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: 2g
+    pids_limit: 200
+
+  redis:
+    <<: *hardening
+    image: redis:7-alpine
+    user: redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set in .env}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --protected-mode yes --appendonly yes --save ""
+    volumes: [redis_data:/data]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+    pids_limit: 100
+
+  # ---- Placeholders (profile "monitoring"; not routed by Caddy until Phase 3) ----
+  prometheus:
+    <<: *hardening
+    profiles: [monitoring]
+    image: prom/prometheus:v2.53.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=15GB
+    volumes: [prometheus_data:/prometheus]
+    networks: [monitoring]
+    mem_limit: 1536m
+    pids_limit: 200
+
+  grafana:
+    <<: *hardening
+    profiles: [monitoring]
+    image: grafana/grafana-oss:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "false"
+      GF_SERVER_DOMAIN: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      GF_SERVER_ROOT_URL: https://${TD_GRAFANA_HOSTNAME:?set in .env}/
+    volumes: [grafana_data:/var/lib/grafana]
+    networks: [edge_grafana, monitoring]
+    mem_limit: 512m
+    pids_limit: 200
+
+networks:
+  edge_public: {}                    # Caddy only: the sole network with outbound access
+  edge_app: {internal: true}         # Caddy <-> app
+  edge_grafana: {internal: true}     # Caddy <-> Grafana placeholder
+  backend: {internal: true}          # PostgreSQL, Redis (no app attached in Phase 1)
+  monitoring: {internal: true}       # Prometheus <-> Grafana
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  pgdata: {}
+  redis_data: {}
+  prometheus_data: {}
+  grafana_data: {}

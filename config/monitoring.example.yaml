@@ -1,0 +1,10 @@
+# Example (not loaded): Prometheus/Grafana placeholders. Phase 3 introduces real monitoring.
+prometheus:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  retention_time: 30d
+  retention_size: 15GB
+grafana:
+  anonymous_access: false
+  self_registration: false
+  public_ports: none

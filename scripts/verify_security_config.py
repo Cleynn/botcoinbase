@@ -1,0 +1,178 @@
+"""Static production-safety validator for env file, Docker Compose and Caddyfile.
+
+Never prints secret values. Exit 0 = all checks passed, 1 = at least one problem found.
+Reuses app.config so there is a single implementation of the production rules.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from app.config import ConfigError, load_settings, secret_problem  # noqa: E402
+
+PUBLISHER = "caddy"
+ALLOWED_PUBLISHED = {("80", "tcp"), ("443", "tcp")}
+EXTRA_SECRETS = ("POSTGRES_PASSWORD", "REDIS_PASSWORD", "GRAFANA_ADMIN_PASSWORD")
+DUMMY_SECRET = "x" * 40  # only used in --example mode to skip placeholder detection
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
+def check_env(env: dict[str, str], *, example: bool, path: Path | None = None) -> list[str]:
+    problems: list[str] = []
+    if path is not None and not example and os.name == "posix" and path.stat().st_mode & 0o077:
+        problems.append(f"{path.name} is readable by group/others (chmod 600 required)")
+    td_env = {k: v for k, v in env.items() if k.startswith("TD_")}
+    if example:
+        td_env["TD_SECRET_KEY"] = DUMMY_SECRET
+    else:
+        for name in EXTRA_SECRETS:
+            found = secret_problem(name, env.get(name))
+            if found:
+                problems.append(found)
+    if td_env.get("TD_ENVIRONMENT") != "production":
+        problems.append("TD_ENVIRONMENT must be production")
+    # Load with the file's TD_* variables only: no ambient process environment is consulted.
+    try:
+        load_settings(td_env)
+    except ConfigError as exc:
+        problems.append(str(exc))
+    return problems
+
+
+def _published(entry: Any) -> tuple[str, str]:
+    if isinstance(entry, dict):
+        return str(entry.get("published", "")), str(entry.get("protocol", "tcp"))
+    text = str(entry)
+    protocol = "tcp"
+    if "/" in text:
+        text, protocol = text.rsplit("/", 1)
+    parts = text.split(":")
+    host = parts[-2] if len(parts) >= 2 else parts[0]
+    return host, protocol
+
+
+def check_compose(compose: dict[str, Any]) -> list[str]:
+    problems: list[str] = []
+    services: dict[str, Any] = compose.get("services", {})
+    networks: dict[str, Any] = compose.get("networks", {}) or {}
+
+    for name, svc in services.items():
+        ports = svc.get("ports") or []
+        if name != PUBLISHER and ports:
+            problems.append(f"service '{name}' publishes host ports")
+        if name == PUBLISHER:
+            published = {_published(p) for p in ports}
+            if published != ALLOWED_PUBLISHED:
+                problems.append("caddy must publish exactly TCP 80 and 443")
+        if svc.get("network_mode") == "host":
+            problems.append(f"service '{name}' uses host networking")
+        if svc.get("privileged"):
+            problems.append(f"service '{name}' is privileged")
+        if svc.get("pid") == "host":
+            problems.append(f"service '{name}' shares the host PID namespace")
+        for volume in svc.get("volumes") or []:
+            if "docker.sock" in str(volume):
+                problems.append(f"service '{name}' mounts the Docker socket")
+        image = str(svc.get("image", ""))
+        if image and "@sha256:" not in image and (":" not in image or image.endswith(":latest")):
+            problems.append(f"service '{name}' image is unpinned or uses :latest")
+        if "ALL" not in (svc.get("cap_drop") or []):
+            problems.append(f"service '{name}' does not drop all capabilities")
+        if "no-new-privileges:true" not in (svc.get("security_opt") or []):
+            problems.append(f"service '{name}' lacks no-new-privileges")
+        if not svc.get("profiles"):
+            if not svc.get("restart"):
+                problems.append(f"service '{name}' has no restart policy")
+            if not svc.get("healthcheck"):
+                problems.append(f"service '{name}' has no health check")
+
+    app_user = str(services.get("app", {}).get("user", ""))
+    if not app_user or app_user.split(":")[0] in {"0", "root"}:
+        problems.append("app must run as a non-root user")
+
+    for net_name, net in networks.items():
+        if (net or {}).get("internal"):
+            continue
+        attached = {n for n, s in services.items() if net_name in (_names(s.get("networks")))}
+        if attached - {PUBLISHER}:
+            problems.append(f"non-internal network '{net_name}' is used by non-Caddy services")
+    return problems
+
+
+def _names(networks: Any) -> list[str]:
+    if isinstance(networks, dict):
+        return list(networks)
+    return list(networks or [])
+
+
+def check_caddyfile(text: str) -> list[str]:
+    problems: list[str] = []
+    if not re.search(r"^\s*admin\s+off\s*$", text, re.MULTILINE):
+        problems.append("Caddy admin API is not disabled (admin off)")
+    for var in ("TD_APP_HOSTNAME", "TD_GRAFANA_HOSTNAME"):
+        if "{$" + var + "}" not in text:
+            problems.append(f"Caddyfile has no site block for {var}")
+    if "reverse_proxy app:8000" not in text:
+        problems.append("app host is not routed to app:8000")
+    for target in ("prometheus", "postgres", "redis"):
+        if re.search(rf"reverse_proxy\s+{target}\b", text):
+            problems.append(f"Caddy proxies {target} publicly")
+    for path in ("/healthz", "/metrics", "/docs", "/openapi.json"):
+        if path not in text:
+            problems.append(f"Caddyfile does not block {path}")
+    if re.search(r"auto_https\s+off", text) or re.search(r"Access-Control-Allow-Origin\s+\*", text):
+        problems.append("Caddyfile weakens TLS or enables wildcard CORS")
+    return problems
+
+
+def run(env_file: Path, example: bool, compose_path: Path, caddyfile: Path) -> list[str]:
+    problems: list[str] = []
+    if not env_file.exists():
+        problems.append(f"{env_file.name} not found (run scripts/bootstrap.sh, or use --example)")
+    else:
+        problems += check_env(parse_env_file(env_file), example=example, path=env_file)
+    problems += check_compose(yaml.safe_load(compose_path.read_text(encoding="utf-8")))
+    problems += check_caddyfile(caddyfile.read_text(encoding="utf-8"))
+    return problems
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
+    parser.add_argument("--example", action="store_true", help="allow placeholder secrets")
+    parser.add_argument("--compose", type=Path, default=ROOT / "docker-compose.yml")
+    parser.add_argument("--caddyfile", type=Path, default=ROOT / "infra/caddy/Caddyfile")
+    args = parser.parse_args()
+    if args.example:
+        print("NOTE: --example mode: placeholder secrets are allowed; NOT a production check.")
+    problems = run(args.env_file, args.example, args.compose, args.caddyfile)
+    for problem in problems:
+        print(f"FAIL: {problem}")
+    if problems:
+        return 1
+    print("PASS: all security configuration checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

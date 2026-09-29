@@ -1,0 +1,13 @@
+# Base configuration, loaded first. Environment variables may override only the whitelisted
+# fields in app/config.py. Secrets never live in this file.
+environment: development
+debug: false
+mode: BACKTEST
+log_level: INFO
+app_hostname: tradingdots.onthewall.ovh
+grafana_hostname: grafana.tradingdots.onthewall.ovh
+cookie:
+  secure: true
+  httponly: true
+  samesite: strict
+  path: /

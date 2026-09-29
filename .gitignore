@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+.venv/
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
