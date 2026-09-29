@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from app.storage.paper_repositories import PaperRepository
     from app.storage.proposal_repositories import ProposalRepository
     from app.storage.review_repositories import ExportRepository, ReviewRepository
+    from app.storage.safety_repositories import SafetyRepository
 
 GENESIS_HASH = "0" * 64
 MAX_DETAIL_BYTES = 4096
@@ -414,6 +415,7 @@ class Repos:
     review: ReviewRepository
     export: ExportRepository
     proposals: ProposalRepository
+    safety: SafetyRepository
 
     @classmethod
     def bind(cls, conn: Conn) -> Repos:
@@ -422,6 +424,7 @@ class Repos:
         from app.storage.paper_repositories import PaperRepository
         from app.storage.proposal_repositories import ProposalRepository
         from app.storage.review_repositories import ExportRepository, ReviewRepository
+        from app.storage.safety_repositories import SafetyRepository
 
         return cls(
             UserRepository(conn),
@@ -437,4 +440,5 @@ class Repos:
             ReviewRepository(conn),
             ExportRepository(conn),
             ProposalRepository(conn),
+            SafetyRepository(conn),
         )

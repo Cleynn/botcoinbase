@@ -55,6 +55,7 @@ select = ["E", "F", "I", "B", "UP", "S", "T20", "DTZ"]
 "app/storage/pair_repositories.py" = ["S608"]
 "app/storage/market_repositories.py" = ["S608", "E501"]
 "app/storage/paper_repositories.py" = ["S608", "E501"]
+"app/storage/safety_repositories.py" = ["S608", "E501"]
 # Report text and operator output lines are long sentences.
 "app/reports/builder.py" = ["E501"]
 # Regex tables and word lists: long lines are the data; the "secret" words are search terms.
