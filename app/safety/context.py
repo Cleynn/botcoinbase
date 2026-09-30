@@ -6,11 +6,14 @@ The spread comes from a book observation passed in by the caller; this module fe
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+from app.capital.funds import BalanceLike, Funds, FundsUnavailable, exchange_funds
+from app.capital.profiles import PROFILES, CapitalProfile
 from app.config import Settings
 from app.domain.pairs import PairState
 from app.market.ingest import GRANULARITY, STEP
@@ -98,7 +101,10 @@ class RiskContextBuilder:
         now: datetime,
         book: BookFacts | None,
         client_order_id: str | None = None,
+        accounts: Iterable[BalanceLike] | None = None,
     ) -> RiskInputs:
+        """`accounts` is what the venue reported a moment ago through the read adapter (None when it
+        could not be read); this module still fetches nothing."""
         s = self._settings.safety
         venue = intent.venue
         control = repos.safety.control()
@@ -153,6 +159,8 @@ class RiskContextBuilder:
                 last_price = candles[-1].close if candles else None
 
         capital, equity = self._capital_and_equity(repos, venue, now, last_price, intent.product_id)
+        profile: CapitalProfile | None = PROFILES.get(control.paper_profile)  # every venue is paper
+        funds = self._funds(accounts, capital.inventory_cost if capital else None, now)
         failures = repos.safety.api_failures_since(
             venue, now - timedelta(seconds=s.api_failure_window_seconds)
         )
@@ -181,7 +189,20 @@ class RiskContextBuilder:
             equity=equity,
             assumed_slippage_bps=self._settings.pair_policy.strategy.assumed_slippage_bps,
             safety_margin=self._settings.pair_policy.strategy.safety_margin,
+            profile=profile,
+            funds=funds,
         )
+
+    @staticmethod
+    def _funds(
+        accounts: Iterable[BalanceLike] | None, inventory_cost: Decimal | None, now: datetime
+    ) -> Funds | None:
+        if accounts is None or inventory_cost is None:
+            return None
+        try:
+            return exchange_funds(lambda: accounts, inventory_cost=inventory_cost, now=now)
+        except FundsUnavailable:
+            return None
 
     def _capital_and_equity(
         self,

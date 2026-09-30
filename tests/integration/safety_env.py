@@ -269,6 +269,7 @@ def build_safety_env(
         gateway=fake,
         boot_id=boot_id,
         reconcile=reconciler.run,
+        list_accounts=fake.list_accounts,
     )
     ctx = cast(AuthContext, SimpleNamespace(user=admin.user))
     actor = Actor(AuditActor(admin.user.id, ActorRole.ADMIN), ActorClass.WEB, "t" * 12, "req-1")

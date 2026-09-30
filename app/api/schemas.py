@@ -98,6 +98,19 @@ class ReviewPlainConfirm(_Form):
     confirmation: str = Field(max_length=128)
 
 
+_PROFILE = Field(pattern=r"^[a-z][a-z0-9_]{1,23}$")
+
+
+class BotProfileReauth(_Form):
+    password: str = Field(min_length=1, max_length=1024)
+    profile: str = _PROFILE
+
+
+class BotProfileConfirm(_Form):
+    confirmation: str = Field(max_length=128)
+    profile: str = _PROFILE
+
+
 class ReviewRequestFields(_Form):
     period_start: date
     period_end: date

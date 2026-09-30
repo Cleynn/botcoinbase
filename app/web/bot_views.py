@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Final
 
-from app.safety.control import PHRASES, Overview
+from app.capital.profiles import PROFILES
+from app.safety.control import PHRASES, PROFILE_PHRASES, Overview
 from app.safety.live_gate import BLOCKERS, STATUS_TEXT
 from app.safety.types import BLOCK_REASONS
 from app.storage.repositories import Repos
@@ -39,6 +40,8 @@ REASON_TEXT: Final[dict[str, str]] = {
     "GUARD_REFUSED": "the database refused the change",
     "PHRASE_MISMATCH": "the confirmation phrase did not match exactly",
     "REAUTH_REQUIRED": "confirm your password first",
+    "PROFILE_UNCHANGED": "that profile is already selected",
+    "PROFILE": "that capital profile does not exist",
 }
 
 ACTION_TEXT: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
@@ -90,6 +93,11 @@ MESSAGES: Final[dict[str, tuple[str, str]]] = {
     "reauth_required": ("error", "Confirm your password first, then repeat the action."),
     "phrase_mismatch": ("error", "The confirmation phrase did not match exactly."),
     "invalid": ("error", "The request was invalid."),
+    "profile_paper": ("success", "The PAPER capital profile was updated."),
+    "profile_live": (
+        "success",
+        "The LIVE capital profile was recorded. LIVE TRADING stays BLOCKED.",
+    ),
 }
 
 
@@ -125,6 +133,11 @@ class BotView:
     actions: tuple[tuple[str, str, str], ...]  # slug, label, phrase
     message_kind: str | None
     message_text: str | None
+    profiles: tuple[tuple[str, str, str, str, str, str, bool, bool], ...] = ()
+    paper_profile: str = ""
+    live_profile: str = ""
+    capital_lines: tuple[tuple[str, str], ...] = ()
+    profile_changeable: bool = False
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -183,7 +196,52 @@ def build_bot(o: Overview, *, can_manage: bool, message: str | None) -> BotView:
         tuple((slug, ACTION_TEXT[a][0], PHRASES[a]) for slug, a in SLUGS.items()),
         kind,
         text,
+        profiles=tuple(
+            (
+                p.name,
+                p.title,
+                str(p.allocation_cap),
+                str(p.protected_reserve),
+                str(p.max_deployment),
+                str(p.max_order),
+                p.name == c.paper_profile,
+                p.name == c.live_profile,
+            )
+            for p in PROFILES.values()
+        ),
+        paper_profile=c.paper_profile,
+        live_profile=c.live_profile,
+        capital_lines=_capital_lines(o),
+        profile_changeable=can_manage and c.bot_state == "PAUSED",
     )
+
+
+def _capital_lines(o: Overview) -> tuple[tuple[str, str], ...]:
+    cap = o.capital
+    if cap is None:
+        return ()
+    if cap.available is None:
+        return (("Paper funds", cap.note or "unknown"),)
+    return (
+        ("Paper available USDC (cash less reserved buys)", cap.available),
+        ("Quote reserved by open paper buys", cap.reserved or "0"),
+        ("Paper inventory cost", cap.inventory_cost or "0"),
+        ("Deployable now under the selected paper profile", cap.usable or "0"),
+    )
+
+
+PROFILE_LINES: Final[dict[str, tuple[str, ...]]] = {
+    "paper": (
+        "Sets the capital limits (allocation cap, protected reserve, maximum deployment and "
+        "per-order cap) the PAPER bot and the database enforce.",
+        "The bot must be PAUSED. Nothing on this page places, changes or sells an order.",
+    ),
+    "live": (
+        "Records the capital profile a LIVE run would use. LIVE TRADING stays BLOCKED: this "
+        "choice cannot open the live gate and no live mode exists in this build.",
+        "The bot must be PAUSED. Nothing on this page places, changes or sells an order.",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -197,6 +255,7 @@ class ConfirmView:
     reauth_active: bool
     message_kind: str | None
     message_text: str | None
+    hidden: tuple[tuple[str, str], ...] = ()  # fields carried through both steps
 
 
 def confirm(
@@ -239,4 +298,35 @@ def bot_rows(repos: Repos, now: datetime) -> tuple[tuple[str, str], ...]:
         ("Circuit breaker state", c.breaker_state),
         ("Startup recovery", c.recovery_state),
         ("Reconciliation status", recon),
+    )
+
+
+def profile_confirm(
+    mode: str,
+    profile: str,
+    *,
+    reauth_active: bool,
+    message: str | None,
+    error: str | None = None,
+) -> ConfirmView:
+    kind, text = flash(message)
+    if error:
+        kind, text = "error", f"Refused: {reason_text(error)}."
+    p = PROFILES[profile]
+    detail = (
+        f"Selected: {p.title} ({p.name}): allocation cap {p.allocation_cap} USDC, protected "
+        f"reserve {p.protected_reserve} USDC, maximum deployment {p.max_deployment} USDC, "
+        f"per-order cap {p.max_order} USDC."
+    )
+    return ConfirmView(
+        f"Update capital limits for {mode.upper()} mode",
+        NOTICE,
+        (detail, *PROFILE_LINES[mode]),
+        (),
+        f"/bot/capital/{mode}",
+        PROFILE_PHRASES[mode],
+        reauth_active,
+        kind,
+        text,
+        (("profile", profile),),
     )

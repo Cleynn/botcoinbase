@@ -30,6 +30,7 @@ from decimal import Decimal
 from typing import Final
 
 from app import constants
+from app.capital.funds import simulated_funds
 from app.config import PairPolicy
 from app.domain.money import BPS, ONE, ZERO, fee_for, quantize_down, quantize_up
 from app.market.candles import Candle
@@ -318,6 +319,12 @@ class Trader:
             rules=self.cfg.rules,
             maker_fee=self.cfg.decision_fee,
             levels=self.cfg.levels,
+            funds=simulated_funds(
+                cash=s.cash,
+                reserved=s.reserved(),
+                inventory_cost=s.cost_basis,
+                at_epoch_seconds=candle.start,
+            ),
         )
         if d.action == strat.GRID and d.plan is not None:
             s.counters.decisions_grid += 1

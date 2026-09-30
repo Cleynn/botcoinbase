@@ -13,7 +13,13 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import RedirectResponse, Response
 
 from app.api.dependencies import get_services, request_id, require_permission, resolve_client
-from app.api.schemas import ReviewPlainConfirm, ReviewPlainReauth
+from app.api.schemas import (
+    BotProfileConfirm,
+    BotProfileReauth,
+    ReviewPlainConfirm,
+    ReviewPlainReauth,
+)
+from app.capital.profiles import PROFILES
 from app.domain.enums import ActorRole
 from app.domain.models import AuditActor, AuthContext
 from app.domain.pairs import ActorClass
@@ -136,6 +142,86 @@ def confirm(
         request,
         ctx,
         action,
+        None,
+        _STATUS.get(outcome.kind, 409),
+        error=outcome.reasons[0] if outcome.reasons else "GUARD_REFUSED",
+    )
+
+
+# ---------------------------------------------------------------- capital profile (PAPER / LIVE)
+Mode = Literal["paper", "live"]
+_PROFILE_QUERY = Query(pattern=r"^[a-z][a-z0-9_]{1,23}$")
+
+
+def _profile_page(
+    request: Request,
+    ctx: AuthContext,
+    mode: str,
+    profile: str,
+    message: str | None,
+    status: int = 200,
+    error: str | None = None,
+) -> Response:
+    services = get_services(request)
+    if profile not in PROFILES:
+        return RedirectResponse("/bot?msg=invalid", status_code=303)
+    view = views.profile_confirm(
+        mode,
+        profile,
+        reauth_active=services.bot.reauth_active(ctx),
+        message=message,
+        error=error,
+    )
+    return services.renderer.html("bot_confirm.html", status, auth=ctx, active="bot", view=view)
+
+
+@router.get("/bot/capital/{mode}/request")
+def profile_request(
+    request: Request,
+    mode: Mode,
+    profile: Annotated[str, _PROFILE_QUERY],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+    msg: Annotated[str | None, Query(max_length=32)] = None,
+) -> Response:
+    return _profile_page(request, ctx, mode, profile, msg)
+
+
+@router.post("/bot/capital/{mode}/reauth")
+def profile_reauth(
+    request: Request,
+    mode: Mode,
+    form: Annotated[BotProfileReauth, Form()],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+) -> Response:
+    code = _reauth(request, ctx, form.password)
+    if code == "reauth_ok":
+        return RedirectResponse(
+            f"/bot/capital/{mode}/request?profile={form.profile}&msg={code}", status_code=303
+        )
+    return _profile_page(
+        request, ctx, mode, form.profile, code, 429 if code == "throttled" else 400
+    )
+
+
+@router.post("/bot/capital/{mode}/confirm")
+def profile_confirm(
+    request: Request,
+    mode: Mode,
+    form: Annotated[BotProfileConfirm, Form()],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+) -> Response:
+    outcome: Outcome = get_services(request).bot.set_profile(
+        ctx, _actor(request, ctx), mode, form.profile, form.confirmation
+    )
+    if outcome.kind == "ok":
+        return RedirectResponse(f"/bot?msg=profile_{mode}", status_code=303)
+    if outcome.kind in ("phrase_mismatch", "reauth_required", "invalid"):
+        return _profile_page(request, ctx, mode, form.profile, outcome.kind, _STATUS[outcome.kind])
+    return _profile_page(
+        request,
+        ctx,
+        mode,
+        form.profile,
         None,
         _STATUS.get(outcome.kind, 409),
         error=outcome.reasons[0] if outcome.reasons else "GUARD_REFUSED",

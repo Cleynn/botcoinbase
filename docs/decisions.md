@@ -238,6 +238,14 @@ Self-review (security-engineer pass) found one BLOCKER, three HIGH, two MEDIUM i
 - Still OPEN (not fixed): M3 caller-supplied order book is not independently verified; M4 no scheduler/heartbeat (every host action is operator-driven); M5 no retention policy for safety tables; M6 restrictive web actions depend on audit availability; M7 reconciliation lookback is limited. Lows: VIEWER sees client order ids; FAKE venue legal in the production schema; no per-session phrase throttle; backup docs; the 0006 down-migration destroys safety history. Loss/drawdown SQL limits are not covered by a dedicated regression test.
 - review: SELF. **Still no independent security review.**
 
+### DEC-024: Capital profiles, exchange-funds check and funds-based grid sizing
+- Owner request: size from the actual available USDC, a selectable profile for paper and live, use the grid sizing. The fixed ceilings 50/15/35/12 (constants and SQL) become four immutable profiles (`pilot` equals the old values and is the default); migration 0007 (new, 0006 is not edited again).
+- **Baseline deviation (logged):** the hard ceilings are now per profile. The largest profile allows a 250 cap, 50 reserve, 150 deployment and 50 per order. The database enforces the selected profile in `td_authorize_order` and the paper capital/deposit triggers, on top of absolute table CHECKs (50 per intent, 150 per grid cell). Only `pilot` was ever validated by the earlier phases' real-browser and soak evidence; `expanded` and `medium` are exercised by tests only.
+- Selecting a profile is ADMIN-only, bot PAUSED, never combined with another control change (DB-enforced), phrases as specified, fully audited (`bot.profile_changed`). LIVE selection is recorded only; LIVE remains unrepresentable and the gate stays blocked.
+- BUY orders must fit `usable_quote` computed from the funds the read adapter reports (`FUNDS_UNAVAILABLE` / `INSUFFICIENT_FUNDS`); the paper trader sizes from its ledger. Fewer grid lines are tried before NO_TRADE.
+- Not verified: any real Coinbase balance response (no signer or credentials exist); the loss/drawdown SQL ceilings are not scaled by profile; `expanded`/`medium` have no paper soak.
+- review: SELF. **No independent security review has been performed on this change.** Because it raises the maximum capital the code can be configured to use, it needs one before any profile other than `pilot` is used outside tests.
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

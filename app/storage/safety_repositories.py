@@ -19,6 +19,8 @@ _CONTROL_COLUMNS = frozenset(
         "kill_switch",
         "kill_reason",
         "kill_activated_at",
+        "paper_profile",
+        "live_profile",
         "breaker_state",
         "breaker_reason",
         "breaker_opened_at",
@@ -49,6 +51,8 @@ class ControlRow:
     last_change_reason: str
     version: int
     updated_at: datetime
+    paper_profile: str = "pilot"
+    live_profile: str = "pilot"
 
 
 @dataclass(frozen=True)
@@ -225,7 +229,8 @@ class SafetyRepository:
         row = self._conn.execute(
             "SELECT bot_state, kill_switch, kill_reason, kill_activated_at, breaker_state, "
             "breaker_reason, breaker_opened_at, breaker_cooldown_until, recovery_state, "
-            "recovery_completed_at, boot_id, last_change_reason, version, updated_at "
+            "recovery_completed_at, boot_id, last_change_reason, version, updated_at, "
+            "paper_profile, live_profile "
             "FROM bot_control WHERE id" + (" FOR UPDATE" if for_update else "")
         ).fetchone()
         if row is None:  # pragma: no cover  (the migration inserts the single row)

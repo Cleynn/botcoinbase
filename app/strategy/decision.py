@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from app import constants
+from app.capital.funds import Funds, usable_limits
 from app.config import PairPolicy
 from app.domain.money import BPS, ONE, ZERO, canonical, ratio
 from app.market.candles import Candle, series_gaps
@@ -73,8 +75,37 @@ def operator_fee(policy: PairPolicy, today: date) -> Decimal:
     return fees.operator_maker_rate
 
 
-def capital_policy(policy: PairPolicy) -> CapitalPolicy:
-    return CapitalPolicy(policy.total_capital, policy.min_reserve, policy.max_deployment)
+def capital_policy(policy: PairPolicy, funds: Funds | None = None) -> CapitalPolicy:
+    """The capital a grid may use. With `funds` (what the venue or the paper ledger really holds)
+    the deployment cap is reduced to what is actually usable: available - reserve, and never more
+    than the deployment cap less what is already committed."""
+    cap = policy.max_deployment
+    if funds is not None:
+        cap = min(
+            cap,
+            usable_limits(
+                funds,
+                allocation_cap=policy.total_capital,
+                reserve=policy.min_reserve,
+                max_deployment=policy.max_deployment,
+            ),
+        )
+    return CapitalPolicy(
+        policy.total_capital, policy.min_reserve, cap, profile=policy.capital_profile
+    )
+
+
+# Rejections a smaller number of grid lines can cure: fewer cells mean a larger cell budget and
+# wider spacing between lines (so a cell can earn back its fees).
+_CURABLE_CODES = frozenset(
+    {
+        "BELOW_BASE_MINIMUM",
+        "BELOW_QUOTE_MINIMUM",
+        "CELL_BUDGET_EXCEEDED",
+        "FEES_INFEASIBLE",
+        "STRESS_FEES_INFEASIBLE",
+    }
+)
 
 
 def lookback_needed(policy: PairPolicy) -> int:
@@ -89,6 +120,7 @@ def decide(
     rules: MarketRules,
     maker_fee: Decimal,
     levels: int | None = None,
+    funds: Funds | None = None,
 ) -> Decision:
     """`candles` must be closed, validated, ascending and end at the decision time."""
     s = policy.strategy
@@ -148,17 +180,28 @@ def decide(
     )
     plan: GridPlan | None = None
     if not reasons:
-        try:
-            plan = build_grid(
-                lower=lower,
-                upper=upper,
-                levels=levels,
-                rules=rules,
-                capital=capital_policy(policy),
-                costs=cost_model(policy, maker_fee=maker_fee),
-            )
-        except GridRejected as exc:
-            reasons.append(exc.code)
+        capital = capital_policy(policy, funds)
+        if funds is not None and capital.cap <= 0:
+            reasons.append("NO_DEPLOYABLE_CAPITAL")
+        else:
+            failure: GridRejected | None = None
+            for n in range(levels, constants.GRID_MIN_LEVELS - 1, -1):
+                try:
+                    plan = build_grid(
+                        lower=lower,
+                        upper=upper,
+                        levels=n,
+                        rules=rules,
+                        capital=capital,
+                        costs=cost_model(policy, maker_fee=maker_fee),
+                    )
+                    break
+                except GridRejected as exc:
+                    failure = exc
+                    if exc.code not in _CURABLE_CODES:
+                        break
+            if plan is None and failure is not None:
+                reasons.append(failure.code)
     if plan is not None:
         score = score_pair(
             separation=separation,

@@ -24,6 +24,8 @@ from uuid import UUID, uuid4
 import psycopg
 
 from app.auth.audit import AuditWriter
+from app.capital.funds import Funds, FundsUnavailable, paper_funds, usable_quote
+from app.capital.profiles import PROFILES
 from app.config import Settings
 from app.domain.enums import AuditEventType as Evt
 from app.domain.enums import AuditResult as Res
@@ -42,6 +44,11 @@ PHRASES: Final[dict[str, str]] = {
     "kill": "ACTIVATE KILL SWITCH",
 }
 ACTIONS: Final = tuple(PHRASES)
+# Choosing the capital profile for a mode (never an order): same flow, one phrase per mode.
+PROFILE_PHRASES: Final[dict[str, str]] = {
+    "paper": "UPDATE CAPITAL LIMITS FOR PAPER MODE",
+    "live": "UPDATE CAPITAL LIMITS FOR LIVE MODE",
+}
 DB_RECONCILE_WINDOW_SECONDS: Final = 300  # the database guard's hard limit
 
 Kind = Literal[
@@ -53,6 +60,18 @@ Kind = Literal[
 class Outcome:
     kind: Kind
     reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CapitalOverview:
+    """What the paper ledger holds and what the selected PAPER profile lets the bot deploy. The
+    venue's own USDC is read only by the host (through the read adapter), never by the web tier."""
+
+    available: str | None
+    reserved: str | None
+    inventory_cost: str | None
+    usable: str | None
+    note: str | None
 
 
 @dataclass(frozen=True)
@@ -69,6 +88,7 @@ class Overview:
     api_calls_1h: int
     api_failures_1h: int
     reauth_active: bool = False
+    capital: CapitalOverview | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -149,7 +169,33 @@ class ControlService:
                 api_calls_1h=calls,
                 api_failures_1h=bad,
                 reauth_active=self._reauth_active(ctx) if ctx is not None else False,
+                capital=self._capital(repos, now),
             )
+
+    def _capital(self, repos: Repos, now: datetime) -> CapitalOverview:
+        control = repos.safety.control()
+        profile = PROFILES.get(control.paper_profile)
+        cash = repos.paper.cash()
+        if profile is None:
+            return CapitalOverview(None, None, None, None, "the selected profile is unknown")
+        if not repos.paper.has_deposit():
+            return CapitalOverview(None, None, None, None, "no paper deposit yet")
+        try:
+            funds: Funds = paper_funds(
+                cash=cash,
+                reserved=repos.paper.reserved(),
+                inventory_cost=repos.paper.total_position()[1],
+                now=now,
+            )
+        except FundsUnavailable:
+            return CapitalOverview(None, None, None, None, "the paper ledger is inconsistent")
+        return CapitalOverview(
+            str(funds.available),
+            str(funds.hold),
+            str(funds.inventory_cost),
+            str(usable_quote(funds, profile)),
+            None,
+        )
 
     def resume_blockers(self, repos: Repos, now: datetime) -> tuple[str, ...]:
         """Everything that forbids RESUME right now (the database enforces the same rules)."""
@@ -188,25 +234,35 @@ class ControlService:
         return tuple(out)
 
     # ------------------------------------------------------------------ the workflow
-    def execute(self, ctx: AuthContext, actor: Actor, action: str, typed: str) -> Outcome:
-        if action not in PHRASES:
-            return Outcome("invalid", ("ACTION",))
-        # 1. phrase, 2. fresh reauth, 3. audit of the accepted request (its own transaction)
+    def _confirmed(
+        self,
+        ctx: AuthContext,
+        actor: Actor,
+        action: str,
+        expected: str,
+        typed: str,
+        detail: dict[str, str | int | bool | None],
+    ) -> Outcome | None:
+        """Steps 1-3 of the workflow. None means: proceed to the internal command."""
         with self._storage.tx() as repos:
-            if not _same(typed or "", PHRASES[action]):
+            if not _same(typed or "", expected):
                 self._deny(repos, actor, action, "PHRASE_MISMATCH")
                 return Outcome("phrase_mismatch")
             if not self._consume_reauth(repos, ctx):
                 self._deny(repos, actor, action, "REAUTH_REQUIRED")
                 return Outcome("reauth_required")
             self._record(
-                repos,
-                actor,
-                Evt.BOT_CONTROL_REQUESTED,
-                Res.SUCCESS,
-                action.upper(),
-                {"action": action},
+                repos, actor, Evt.BOT_CONTROL_REQUESTED, Res.SUCCESS, action.upper(), detail
             )
+        return None
+
+    def execute(self, ctx: AuthContext, actor: Actor, action: str, typed: str) -> Outcome:
+        if action not in PHRASES:
+            return Outcome("invalid", ("ACTION",))
+        # 1. phrase, 2. fresh reauth, 3. audit of the accepted request (its own transaction)
+        refused = self._confirmed(ctx, actor, action, PHRASES[action], typed, {"action": action})
+        if refused is not None:
+            return refused
         # 4. the internal command, 5. its outcome audit
         try:
             with self._storage.tx() as repos:
@@ -215,6 +271,58 @@ class ControlService:
             with self._storage.tx() as repos:
                 self._deny(repos, actor, action, "GUARD_REFUSED")
             return Outcome("not_allowed", ("GUARD_REFUSED",))
+
+    def set_profile(
+        self, ctx: AuthContext, actor: Actor, mode: str, profile: str, typed: str
+    ) -> Outcome:
+        """Choose the capital profile for PAPER or LIVE. Never creates, changes or sells an order.
+        A profile is only ever chosen while the bot is PAUSED; choosing one for LIVE leaves the
+        live gate exactly as blocked as before."""
+        if mode not in PROFILE_PHRASES:
+            return Outcome("invalid", ("MODE",))
+        if profile not in PROFILES:  # checked first: a bad request never spends the reauth
+            return Outcome("invalid", ("PROFILE",))
+        action = f"{mode}_profile"
+        detail: dict[str, str | int | bool | None] = {"mode": mode, "profile": profile}
+        refused = self._confirmed(ctx, actor, action, PROFILE_PHRASES[mode], typed, detail)
+        if refused is not None:
+            return refused
+        try:
+            with self._storage.tx() as repos:
+                return self._profile_command(repos, actor, action, mode, profile)
+        except psycopg.errors.IntegrityConstraintViolation:
+            with self._storage.tx() as repos:
+                self._deny(repos, actor, action, "GUARD_REFUSED")
+            return Outcome("not_allowed", ("GUARD_REFUSED",))
+
+    def _profile_command(
+        self, repos: Repos, actor: Actor, action: str, mode: str, profile: str
+    ) -> Outcome:
+        now = self._clock.now()
+        control = repos.safety.control(for_update=True)
+        if control.bot_state != "PAUSED":
+            self._deny(repos, actor, action, "BOT_MUST_BE_PAUSED")
+            return Outcome("not_allowed", ("BOT_MUST_BE_PAUSED",))
+        current = control.paper_profile if mode == "paper" else control.live_profile
+        if current == profile:
+            self._deny(repos, actor, action, "PROFILE_UNCHANGED")
+            return Outcome("not_allowed", ("PROFILE_UNCHANGED",))
+        if not repos.safety.update_control(
+            control.version,
+            now,
+            last_change_reason=f"{mode.upper()}_PROFILE_CHANGE",
+            **{f"{mode}_profile": profile},
+        ):
+            return self._lost_race(repos, actor, action)
+        self._record(
+            repos,
+            actor,
+            Evt.BOT_PROFILE_CHANGED,
+            Res.SUCCESS,
+            f"{mode.upper()}_PROFILE_CHANGE",
+            {"mode": mode, "from": current, "to": profile, "live_gate": "BLOCKED"},
+        )
+        return Outcome("ok")
 
     def _command(self, repos: Repos, actor: Actor, action: str) -> Outcome:
         now = self._clock.now()

@@ -29,7 +29,8 @@ from app.backtest.trader import (
     Trader,
     TraderState,
 )
-from app.config import Settings
+from app.capital.profiles import PROFILES as CAPITAL_PROFILES
+from app.config import PairPolicy, Settings
 from app.domain.enums import AuditEventType, AuditResult
 from app.domain.models import Clock
 from app.domain.money import canonical
@@ -176,6 +177,15 @@ class PaperExchange:
             data_stale=age is None or age > self._policy.validation.max_stale_seconds,
         )
 
+    def _policy_for(self, repos: Repos) -> PairPolicy:
+        """The static policy under the capital profile selected for PAPER in the database."""
+        profile = CAPITAL_PROFILES.get(repos.safety.control().paper_profile)
+        if profile is None:
+            raise PaperError("PROFILE_UNKNOWN")
+        if not profile.trades:
+            raise PaperError("PROFILE_NO_DEPLOYMENT")
+        return self._policy.for_profile(profile)
+
     # ------------------------------------------------------------------ start / stop
     def start(self, *, acknowledge_halt: bool = False) -> SessionRow:
         """PAUSED -> RUNNING for the one PAPER_ACTIVE pair. Refuses on anything doubtful."""
@@ -193,6 +203,7 @@ class PaperExchange:
             if session.state != "PAUSED":
                 raise PaperError("ALREADY_RUNNING")
             control = repos.safety.control()
+            policy = self._policy_for(repos)
             if control.kill_switch == "ACTIVE":
                 raise PaperError("KILL_SWITCH_ACTIVE")
             if control.breaker_state == "OPEN":
@@ -221,7 +232,7 @@ class PaperExchange:
                 raise PaperError("DATA_STALE")
             if not repos.paper.has_deposit():
                 repos.paper.add_entry(
-                    "DEPOSIT", "DEPOSIT", self._policy.total_capital, Decimal(0), None, now
+                    "DEPOSIT", "DEPOSIT", policy.total_capital, Decimal(0), None, now
                 )
                 repos.paper.set_position(pair.id, Decimal(0), Decimal(0), now)
             elif session.pair_id is not None and session.pair_id != pair.id:
@@ -239,7 +250,7 @@ class PaperExchange:
                 grid_plan_id=resume_plan if phase == ACTIVE else None,
                 last_candle_start=last if last is not None else newest,
                 phase=phase,
-                peak_equity=max(session.peak_equity, self._policy.total_capital),
+                peak_equity=max(session.peak_equity, policy.total_capital),
             )
             self._audit.record(
                 repos,
@@ -380,7 +391,8 @@ class PaperExchange:
                 return StepResult(0, 0, 0, 0, session.phase, session.last_candle_start)
 
             state = self._load_state(repos, session, pair.id, rules, fee)
-            cfg = SimConfig(self._policy, rules, fee, fee, self._policy.grid_levels)
+            policy = self._policy_for(repos)
+            cfg = SimConfig(policy, rules, fee, fee, policy.grid_levels)
             position = {"i": 0}
 
             def window(n: int) -> list[Candle]:

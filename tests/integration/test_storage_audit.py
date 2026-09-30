@@ -31,13 +31,13 @@ def connect(db: TestDb, role: str) -> psycopg.Connection[Any]:
 
 # ------------------------------------------------------------------ migrations and schema guard
 def test_head_version_and_meta_agree(sql: Callable[..., Any]) -> None:
-    assert sql("SELECT version FROM schema_meta")[0]["version"] == head_version() == 6
+    assert sql("SELECT version FROM schema_meta")[0]["version"] == head_version() == 7
 
 
 def test_migrate_is_idempotent(db: TestDb, role_passwords: tuple[str, str]) -> None:
     assert (
         migrate(db.owner_target(), app_password=role_passwords[0], ctl_password=role_passwords[1])
-        == 6
+        == 7
     )
 
 
@@ -49,7 +49,7 @@ def test_rollback_and_remigrate_round_trip(
     assert sql("SELECT to_regclass('public.pairs') AS t")[0]["t"] is None
     assert (
         migrate(db.owner_target(), app_password=role_passwords[0], ctl_password=role_passwords[1])
-        == 6
+        == 7
     )
     assert sql("SELECT count(*) AS n FROM allowed_transitions")[0]["n"] > 0
     assert sql("SELECT count(*) AS n FROM audit_head")[0]["n"] == 1
@@ -59,13 +59,13 @@ def test_schema_guard_refuses_an_older_schema(
     storage: Storage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     storage.check_schema()
-    monkeypatch.setattr(database, "head_version", lambda: 7)
+    monkeypatch.setattr(database, "head_version", lambda: 8)
     with pytest.raises(SchemaError, match="older"):
         storage.check_schema()
 
 
 def test_schema_guard_refuses_a_newer_schema(storage: Storage, sql: Callable[..., Any]) -> None:
-    sql("UPDATE schema_meta SET version = 7")
+    sql("UPDATE schema_meta SET version = 8")
     with pytest.raises(SchemaError, match="newer"):
         storage.check_schema()
 
@@ -79,7 +79,7 @@ def test_migrate_refuses_to_run_against_a_newer_schema(
 
 
 def test_migration_files_are_contiguous() -> None:
-    assert list(database.migration_files()) == [1, 2, 3, 4, 5, 6]
+    assert list(database.migration_files()) == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_cli_rollback_requires_explicit_acknowledgement(

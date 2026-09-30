@@ -11,6 +11,7 @@
   <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
   <form method="post" action="{{ view.action_path }}/reauth" class="stacked">
     <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    {% for name, value in view.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
     <p><label for="reauth_password">Password</label>
        <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
     <p><button type="submit">Confirm password</button></p>
@@ -20,6 +21,7 @@
   <h2 id="ph-h">Step 2: type the phrase</h2>
   <form method="post" action="{{ view.action_path }}/confirm" class="stacked">
     <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
+    {% for name, value in view.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
     <p><label for="confirmation">Type <code>{{ view.phrase }}</code> exactly</label>
        <input id="confirmation" name="confirmation" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="128" required></p>
     <p><button type="submit">{{ view.title }}</button></p>

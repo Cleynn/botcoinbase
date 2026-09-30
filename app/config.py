@@ -23,6 +23,8 @@ from pydantic import (
 )
 
 from app import constants
+from app.capital.profiles import ABSOLUTE_MAX_ORDER, DEFAULT_PROFILE, CapitalProfile
+from app.capital.profiles import PROFILES as CAPITAL_PROFILES
 
 DEFAULT_CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 PROFILES = ("backtest", "paper")
@@ -444,7 +446,8 @@ class SafetySettings(BaseModel):
     breaker_cooldown_seconds: int = Field(default=900, ge=60, le=86400)
     daily_loss_limit: Decimal = Field(default=Decimal("3"), gt=0, le=Decimal("10"))
     max_drawdown_ratio: Decimal = Field(default=Decimal("0.10"), gt=0, le=Decimal("0.20"))
-    per_order_cap: Decimal = Field(default=constants.POLICY_MAX_ORDER_NOTIONAL, gt=0)
+    # None means "the selected capital profile's per-order cap"; a value may only tighten it
+    per_order_cap: Decimal | None = Field(default=None, gt=0)
     max_intents_per_minute: int = Field(default=10, ge=1, le=60)
     max_reject_streak: int = Field(default=5, ge=1, le=50)
     retry_max_attempts: int = Field(default=3, ge=1, le=5)
@@ -456,8 +459,8 @@ class SafetySettings(BaseModel):
 
     @field_validator("per_order_cap")
     @classmethod
-    def _cap(cls, value: Decimal) -> Decimal:
-        if value > constants.POLICY_MAX_ORDER_NOTIONAL:
+    def _cap(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and value > ABSOLUTE_MAX_ORDER:
             raise ValueError("per_order_cap may only tighten the policy ceiling")
         return value
 
@@ -469,6 +472,7 @@ class PairPolicy(BaseModel):
 
     quote_currencies: tuple[str, ...]
     watchlist: tuple[str, ...]
+    capital_profile: str = DEFAULT_PROFILE  # the profile the three values below may not exceed
     total_capital: Decimal
     min_reserve: Decimal
     max_deployment: Decimal
@@ -493,11 +497,14 @@ class PairPolicy(BaseModel):
             raise ValueError("only USDC-quoted products are permitted")
         if any(not re.fullmatch(r"[A-Z0-9]+-USDC", p) or len(p) > 24 for p in self.watchlist):
             raise ValueError("watchlist entries must look like BASE-USDC")
-        if self.total_capital > constants.POLICY_TOTAL_CAPITAL:
+        profile = CAPITAL_PROFILES.get(self.capital_profile)
+        if profile is None:
+            raise ValueError("capital_profile is not a known profile")
+        if self.total_capital > profile.allocation_cap:
             raise ValueError("total_capital exceeds the hard ceiling")
-        if self.min_reserve < constants.POLICY_MIN_RESERVE:
+        if self.min_reserve < profile.protected_reserve:
             raise ValueError("min_reserve is below the hard floor")
-        if self.max_deployment > constants.POLICY_MAX_DEPLOYMENT:
+        if self.max_deployment > profile.max_deployment:
             raise ValueError("max_deployment exceeds the hard ceiling")
         if self.max_deployment + self.min_reserve > self.total_capital:
             raise ValueError("reserve plus deployment exceeds total capital")
@@ -508,6 +515,17 @@ class PairPolicy(BaseModel):
         if self.regridding_enabled or self.capital_growth_enabled:
             raise ValueError("regridding and capital growth must stay disabled")
         return self
+
+    def for_profile(self, profile: CapitalProfile) -> PairPolicy:
+        """The same policy under another capital profile (validated afresh, never loosened)."""
+        data = self.model_dump()
+        data.update(
+            capital_profile=profile.name,
+            total_capital=profile.allocation_cap,
+            min_reserve=profile.protected_reserve,
+            max_deployment=profile.max_deployment,
+        )
+        return PairPolicy(**data)
 
 
 class Settings(BaseModel):

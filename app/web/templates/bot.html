@@ -22,6 +22,27 @@
   <ul>{% for r in view.gate_reasons %}<li>{{ r }}</li>{% endfor %}</ul>
 </section>
 
+<section aria-labelledby="cp-h">
+  <h2 id="cp-h">Capital</h2>
+  <p>Capital limits come from a named profile. The bot sizes every grid from the USDC actually available (the exchange's balance, or the paper ledger in paper mode) after the protected reserve, never from a fixed amount. PAPER profile: <strong>{{ view.paper_profile }}</strong>. LIVE profile (recorded only; live is blocked): <strong>{{ view.live_profile }}</strong>.</p>
+  {% if view.capital_lines %}<dl>{% for label, value in view.capital_lines %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+  <div class="table-wrap" tabindex="0" role="region" aria-label="Capital profiles table, scrolls sideways on narrow screens">
+  <table>
+    <caption>Capital profiles (USDC)</caption>
+    <thead><tr><th scope="col">Profile</th><th scope="col">Allocation cap</th><th scope="col">Protected reserve</th><th scope="col">Max deployment</th><th scope="col">Max per order</th><th scope="col">Selected for</th>{% if view.can_manage %}<th scope="col">Choose</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for name, title, cap, reserve, deploy, order, is_paper, is_live in view.profiles %}
+      <tr>
+        <th scope="row">{{ title }} ({{ name }})</th><td>{{ cap }}</td><td>{{ reserve }}</td><td>{{ deploy }}</td><td>{{ order }}</td>
+        <td>{% if is_paper %}PAPER{% endif %}{% if is_paper and is_live %}, {% endif %}{% if is_live %}LIVE (blocked){% endif %}{% if not is_paper and not is_live %}-{% endif %}</td>
+        {% if view.can_manage %}<td>{% if view.profile_changeable %}{% if not is_paper %}<a href="/bot/capital/paper/request?profile={{ name }}">for PAPER…</a>{% endif %}{% if not is_paper and not is_live %} · {% endif %}{% if not is_live %}<a href="/bot/capital/live/request?profile={{ name }}">for LIVE…</a>{% endif %}{% else %}pause the bot first{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
 {% if view.recon_findings %}
 <section aria-labelledby="fi-h">
   <h2 id="fi-h">Reconciliation findings (blocking)</h2>

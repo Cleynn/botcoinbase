@@ -6,6 +6,7 @@ All numbers are SYNTHETIC. The engine is pure: nothing here touches a database o
 from __future__ import annotations
 
 from dataclasses import fields, replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -13,6 +14,8 @@ import pytest
 from pydantic import ValidationError
 
 from app import constants
+from app.capital.funds import Funds
+from app.capital.profiles import ABSOLUTE_MAX_ORDER, get_profile
 from app.config import SafetySettings
 from app.safety import risk_engine as engine
 from app.safety.risk_engine import FeeView, RiskInputs
@@ -35,6 +38,8 @@ RULES = ProductRules(True, D("0.01"), D("0.00000001"), D("0.00000001"), D("3400"
 CAPITAL = CapitalView(D("50"), D("0"), D("0"), D("0"), D("0"))
 EQUITY = EquityView(D("50"), D("50"), D("50"))
 FEE = FeeView("OK", D("0.002"), D("0.006"))
+PILOT = get_profile("pilot")
+FUNDS = Funds(D("50"), D("0"), D("0"), "EXCHANGE", datetime(2026, 9, 30, tzinfo=UTC))
 GOOD = RiskInputs(
     gate_ok=True,
     gate_reason=None,
@@ -58,6 +63,8 @@ GOOD = RiskInputs(
     fee=FEE,
     capital=CAPITAL,
     equity=EQUITY,
+    profile=PILOT,
+    funds=FUNDS,
 )
 
 
@@ -128,13 +135,19 @@ CASES: dict[str, tuple[OrderProposal, RiskInputs]] = {
     "SPREAD_UNKNOWN": (ORDER, with_(spread_bps=None, book_age_seconds=None)),
     "PRICE_DEVIATION": (replace(ORDER, price=D("106")), GOOD),
     "ORDER_SHAPE": (replace(ORDER, post_only=False), GOOD),
+    "FUNDS_UNAVAILABLE": (ORDER, with_(funds=None)),
+    "INSUFFICIENT_FUNDS": (
+        ORDER,
+        with_(funds=replace(FUNDS, available=D("20"))),
+    ),  # 20 - 15 < 10.06
 }
 # codes the engine never emits by itself: the pipeline uses them when a fact could not be read
 PIPELINE_ONLY = {"INPUTS_UNAVAILABLE"}
+MULTI_REASON = {"PROFILE_UNAVAILABLE"}  # blocks the capital rules together, tested below
 
 
 def test_every_block_reason_has_a_case_and_is_reachable() -> None:
-    assert set(CASES) | PIPELINE_ONLY == set(BLOCK_REASONS)
+    assert set(CASES) | PIPELINE_ONLY | MULTI_REASON == set(BLOCK_REASONS)
 
 
 @pytest.mark.parametrize("reason", sorted(CASES))
@@ -161,7 +174,7 @@ NULLABLE = [
         "kill_active", "breaker_open", "bot_running", "recovery_complete", "reconciliation",
         "unknown_attempts", "unknown_orders", "balance_unexpected", "api_failures_recent",
         "pair_active", "product", "market_data_age_seconds", "last_price", "spread_bps",
-        "book_age_seconds", "fee", "capital", "equity",
+        "book_age_seconds", "fee", "capital", "equity", "profile", "funds",
     }
 ]  # fmt: skip
 
@@ -221,9 +234,9 @@ def test_a_malformed_order_shape_blocks(order: OrderProposal) -> None:
 
 # ------------------------------------------------------------------ ceilings
 def test_config_may_tighten_but_never_raise_the_per_order_cap() -> None:
-    assert SafetySettings().per_order_cap == constants.POLICY_MAX_ORDER_NOTIONAL
+    assert SafetySettings().per_order_cap is None  # None = the selected profile's own cap
     with pytest.raises(ValidationError):
-        SafetySettings(per_order_cap=constants.POLICY_MAX_ORDER_NOTIONAL + 1)
+        SafetySettings(per_order_cap=ABSOLUTE_MAX_ORDER + 1)
     tight = SafetySettings(per_order_cap=D("5"))
     assert "ORDER_CAP_BREACH" in decide(limits=tight).reasons  # 10 USDC order against a 5 cap
 
@@ -304,3 +317,56 @@ def test_the_hash_ignores_decimal_formatting_but_not_value() -> None:
 
 def test_evaluate_is_pure_and_repeatable() -> None:
     assert decide(*CASES["RESERVE_BREACH"]) == decide(*CASES["RESERVE_BREACH"])
+
+
+# ------------------------------------------------------------------ capital profiles and funds
+def test_without_a_profile_the_capital_rules_all_block() -> None:
+    reasons = set(decide(facts=with_(profile=None)).reasons)
+    assert {"PROFILE_UNAVAILABLE", "ORDER_CAP_BREACH", "RESERVE_BREACH"} <= reasons
+    assert "DEPLOYMENT_CAP_BREACH" in reasons
+
+
+def test_the_profile_sets_the_per_order_cap_reserve_and_deployment_cap() -> None:
+    expanded = get_profile("expanded")  # 100 / 25 / 75 / order 25
+    big = replace(ORDER, base_qty=D("0.2"))  # 20 USDC: over the pilot's 12, within expanded's 25
+    rich = with_(
+        profile=expanded,
+        capital=CapitalView(D("100"), D("0"), D("0"), D("0"), D("0")),
+        funds=Funds(D("100"), D("0"), D("0"), "EXCHANGE", FUNDS.observed_at),
+        equity=EquityView(D("100"), D("100"), D("100")),
+    )
+    assert "ORDER_CAP_BREACH" in decide(big).reasons  # pilot
+    assert decide(big, rich).allowed
+    assert "ORDER_CAP_BREACH" in decide(replace(ORDER, base_qty=D("0.26")), rich).reasons
+    research = with_(profile=get_profile("research"))
+    assert "ORDER_CAP_BREACH" in decide(facts=research).reasons  # nothing may be deployed
+
+
+def test_a_per_order_cap_setting_can_only_tighten_the_profile() -> None:
+    tight = SafetySettings(per_order_cap=D("5"))
+    assert "ORDER_CAP_BREACH" in decide(limits=tight).reasons
+
+
+def test_a_buy_must_fit_the_venues_reported_usdc_after_the_reserve() -> None:
+    # 10 USDC order + 0.6% stress fee = 10.06; usable = available - 15 reserve
+    ok = with_(funds=replace(FUNDS, available=D("25.06")))
+    short = with_(funds=replace(FUNDS, available=D("25.05")))
+    assert decide(facts=ok).allowed
+    assert decide(facts=short).reasons == ("INSUFFICIENT_FUNDS",)
+
+
+def test_quote_locked_in_open_orders_and_inventory_reduce_what_fits() -> None:
+    crowded = with_(funds=replace(FUNDS, available=D("50"), hold=D("20"), inventory_cost=D("10")))
+    assert decide(facts=crowded).reasons == ("INSUFFICIENT_FUNDS",)  # 35 - 30 = 5 room left
+
+
+def test_a_sell_needs_no_quote_funds() -> None:
+    sell = replace(ORDER, side="SELL")
+    facts = with_(
+        funds=replace(FUNDS, available=D("0")), capital=replace(CAPITAL, inventory_qty=D("0.3"))
+    )
+    assert decide(sell, facts).allowed
+
+
+def test_unreadable_funds_block_buys_and_never_read_as_zero_available() -> None:
+    assert decide(facts=with_(funds=None)).reasons == ("FUNDS_UNAVAILABLE",)

@@ -120,6 +120,7 @@ class AuditEventType(StrEnum):
     BOT_CANCEL_REQUESTED = "bot.cancel_requested"
     BOT_CANCEL_COMPLETED = "bot.cancel_completed"
     BOT_CANCEL_FAILED = "bot.cancel_failed"
+    BOT_PROFILE_CHANGED = "bot.profile_changed"
     RECONCILIATION_OK = "reconciliation.ok"
     RECONCILIATION_MISMATCH = "reconciliation.mismatch"
     RECONCILIATION_FAILED = "reconciliation.failed"

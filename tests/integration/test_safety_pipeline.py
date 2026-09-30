@@ -41,6 +41,7 @@ def pipeline_with(safe: SafetyEnv, gateway: Any, **changes: Any) -> OrderPipelin
         gateway=gateway,
         boot_id=safe.boot_id,
         reconcile=safe.reconciler.run,
+        list_accounts=safe.fake.list_accounts,
     )
 
 
@@ -310,18 +311,30 @@ def test_every_hot_guard_blocks_before_any_exchange_call(
     ]
 
 
-def test_an_intent_over_the_hard_order_cap_is_refused_by_the_schema_and_never_stored(
+def test_an_intent_over_the_largest_profile_cap_is_refused_by_the_schema_and_never_stored(
     safe: SafetyEnv, sql: Sql
 ) -> None:
     safe.running()
     result = safe.pipeline.submit(
-        replace(safe.proposal(), base_qty=D("0.2")), source="test", slot="big", book=safe.book()
-    )
+        replace(safe.proposal(), base_qty=D("0.6")), source="test", slot="big", book=safe.book()
+    )  # 60 USDC: over every profile
     assert result.kind == "invalid" and result.reasons == ("INTENT_REFUSED",)
     assert sql("SELECT count(*) AS n FROM order_intents")[0]["n"] == 0 and submit_count(safe) == 0
     assert "INTENT_REFUSED" in [
         r["reason_code"] for r in sql("SELECT reason_code FROM audit_events")
     ]
+
+
+def test_an_order_over_the_selected_profiles_cap_is_blocked_and_never_sent(
+    safe: SafetyEnv, sql: Sql
+) -> None:
+    safe.running()
+    result = safe.pipeline.submit(
+        replace(safe.proposal(), base_qty=D("0.2")), source="test", slot="big", book=safe.book()
+    )  # 20 USDC: fits the table ceiling, not the pilot profile's 12
+    assert result.kind == "blocked" and "ORDER_CAP_BREACH" in result.reasons
+    assert submit_count(safe) == 0
+    assert sql("SELECT count(*) AS n FROM order_attempts")[0]["n"] == 0
 
 
 def test_stale_market_data_and_metadata_block(safe: SafetyEnv) -> None:

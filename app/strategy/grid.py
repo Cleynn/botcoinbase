@@ -5,8 +5,8 @@ Buy prices round DOWN and sell prices round UP to the price increment, so roundi
 cell more conservative. A cell's quantity is sized so that notional plus a stress-fee allowance fits
 its share of the deployment cap; quantities round DOWN to the base increment.
 
-Hard limits (constants, config may only tighten them): total capital 50, protected reserve 15,
-deployment cap 35, 3 to 5 levels, one active pair.
+Hard limits (the named capital profile; config may only tighten them): the pilot profile is total
+capital 50, protected reserve 15, deployment cap 35; 3 to 5 levels; one active pair.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app import constants
+from app.capital.profiles import DEFAULT_PROFILE, PROFILES
 from app.domain.money import ONE, ZERO, geometric_ratio, quantize_down, quantize_up, ratio
 from app.domain.pairs import ProductMetadata
 
@@ -36,12 +37,14 @@ class CapitalPolicy:
     total: Decimal
     reserve: Decimal
     cap: Decimal
+    profile: str = DEFAULT_PROFILE
 
     def validate(self) -> None:
-        if not (
-            self.total <= constants.POLICY_TOTAL_CAPITAL
-            and self.reserve >= constants.POLICY_MIN_RESERVE
-            and self.cap <= constants.POLICY_MAX_DEPLOYMENT
+        limits = PROFILES.get(self.profile)
+        if limits is None or not (
+            self.total <= limits.allocation_cap
+            and self.reserve >= limits.protected_reserve
+            and self.cap <= limits.max_deployment
             and self.cap + self.reserve <= self.total
         ):
             raise GridRejected("CAPITAL_POLICY")

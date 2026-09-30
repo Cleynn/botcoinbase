@@ -19,7 +19,7 @@ Rules this module enforces (and the database backs up):
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Final, Literal
@@ -28,6 +28,7 @@ from uuid import UUID, uuid4, uuid5
 import psycopg
 
 from app.auth.audit import HOST_CLI_ACTOR, AuditWriter
+from app.capital.funds import BalanceLike
 from app.config import Settings
 from app.domain.enums import AuditEventType as Evt
 from app.domain.enums import AuditResult as Res
@@ -91,8 +92,12 @@ class OrderPipeline:
         gateway: ExecutionGateway | None,
         boot_id: str,
         reconcile: Callable[[str], object] | None = None,
+        list_accounts: Callable[[], Iterable[BalanceLike]] | None = None,
     ) -> None:
+        """`list_accounts` is the read adapter's balance call: a BUY is sized against the USDC the
+        venue reports right before the decision. Without it (or if it fails) no BUY is allowed."""
         self._storage, self._clock, self._settings = storage, clock, settings
+        self._list_accounts = list_accounts
         self._gateway, self._boot_id = gateway, boot_id
         self._reconcile = reconcile
         self._audit = AuditWriter(clock)
@@ -180,9 +185,18 @@ class OrderPipeline:
             return PipelineResult("invalid", None, reasons=("INTENT_REFUSED",))
         return self.process(intent.id, book=book)
 
+    def _read_accounts(self) -> tuple[BalanceLike, ...] | None:
+        if self._list_accounts is None:
+            return None
+        try:
+            return tuple(self._list_accounts())
+        except Exception:  # any failure means "funds unknown", which blocks BUY orders
+            return None
+
     def _authorize(
         self, intent_id: UUID, book: BookFacts | None
     ) -> PipelineResult | tuple[UUID, OrderRequest]:
+        accounts = self._read_accounts()  # the network read happens outside any transaction
         now = self._clock.now()
         with self._storage.tx() as repos:
             intent = repos.safety.intent(intent_id)
@@ -192,7 +206,12 @@ class OrderPipeline:
             attempt_no = len(attempts) + 1
             client_id = client_order_id(intent_id, attempt_no)
             facts = self._builder.build(
-                repos, intent, now=now, book=book, client_order_id=str(client_id)
+                repos,
+                intent,
+                now=now,
+                book=book,
+                client_order_id=str(client_id),
+                accounts=accounts,
             )
             decision = risk_engine.evaluate(_proposal(intent), facts, self._settings.safety)
             row = DecisionRow(

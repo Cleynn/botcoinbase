@@ -3,7 +3,9 @@
 It reads nothing and writes nothing. `RiskInputs` carries facts gathered elsewhere; a fact that is
 missing (`None`) is a reason to block, never a reason to allow. The engine returns ALL reasons it
 finds, not the first, so an operator sees the full picture. It cannot raise a ceiling: reserve,
-deployment cap and per-order cap come from `app.constants` and config may only tighten them.
+deployment cap and per-order cap come from the selected capital profile and config may only tighten
+them. A BUY must also fit the USDC the venue itself reports (`facts.funds`) after the protected
+reserve; funds that could not be read block.
 
 The same money rules (per-order cap, reserve, deployment cap, sell-only, loss and drawdown) are
 recomputed by `td_authorize_order` inside the database at the moment of authorization, at the hard
@@ -19,7 +21,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from app import constants
+from app.capital.funds import Funds, usable_quote
+from app.capital.profiles import CapitalProfile
 from app.config import SafetySettings
 from app.safety.types import (
     CapitalView,
@@ -69,6 +72,8 @@ class RiskInputs:
     equity: EquityView | None
     assumed_slippage_bps: Decimal = Decimal("5")
     safety_margin: Decimal = Decimal("0.001")
+    profile: CapitalProfile | None = None  # the selected capital profile for this mode
+    funds: Funds | None = None  # USDC as the venue reports it; None = could not be read
 
 
 def _canonical(value: object) -> object:
@@ -202,9 +207,20 @@ def evaluate(order: OrderProposal, facts: RiskInputs, limits: SafetySettings) ->
         if order.expected_cycle_return is None or order.expected_cycle_return <= required:
             block("EDGE_BELOW_COSTS")
 
-    # ---- capital: reserve, deployment cap, per-order cap, inventory
+    # ---- capital: profile limits, the venue's own funds, reserve, deployment cap, inventory
     notional = order.price * order.base_qty
-    cap = min(limits.per_order_cap, constants.POLICY_MAX_ORDER_NOTIONAL)
+    profile = facts.profile
+    if profile is None:
+        block("PROFILE_UNAVAILABLE")
+        cap = ZERO
+        reserve_floor = Decimal("Infinity")
+        deployment_cap = ZERO
+    else:
+        cap = profile.max_order
+        if limits.per_order_cap is not None:
+            cap = min(cap, limits.per_order_cap)
+        reserve_floor = profile.protected_reserve
+        deployment_cap = profile.max_deployment
     if notional > cap:
         block("ORDER_CAP_BREACH")
     capital = facts.capital
@@ -215,14 +231,21 @@ def evaluate(order: OrderProposal, facts: RiskInputs, limits: SafetySettings) ->
         stress = fee.stress_rate if fee is not None else Decimal("0.006")
         outlay = notional * (1 + stress)
         free = capital.cash_total - capital.reserved_open_buys - outlay
-        if free < constants.POLICY_MIN_RESERVE:
+        if free < reserve_floor:
             block("RESERVE_BREACH")
         deployed = capital.reserved_open_buys + capital.inventory_cost + notional
-        if deployed > constants.POLICY_MAX_DEPLOYMENT:
+        if deployed > deployment_cap:
             block("DEPLOYMENT_CAP_BREACH")
     elif order.side == "SELL":
         if order.base_qty > capital.inventory_qty - capital.reserved_open_sells_qty:
             block("SELL_EXCEEDS_INVENTORY")
+    if order.side == "BUY":
+        if facts.funds is None:
+            block("FUNDS_UNAVAILABLE")
+        elif profile is not None:
+            stress = fee.stress_rate if fee is not None else Decimal("0.006")
+            if notional * (1 + stress) > usable_quote(facts.funds, profile):
+                block("INSUFFICIENT_FUNDS")
 
     # ---- loss and drawdown
     eq = facts.equity

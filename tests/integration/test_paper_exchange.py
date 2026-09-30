@@ -463,3 +463,38 @@ def test_a_pair_with_open_paper_orders_or_inventory_is_not_clean(paper: Paper, s
         assert paper.env.state(paper.pair_id) is not PairState.DISABLED
     else:
         assert outcome.kind == "ok"
+
+
+# ------------------------------------------------------------------ capital profiles
+def select_paper_profile(db: TestDb, name: str) -> None:
+    with role_conn(db, "td_app") as conn:  # the ADMIN dashboard's role; the bot is PAUSED
+        conn.execute(
+            "UPDATE bot_control SET paper_profile = %s, version = version + 1, "
+            "updated_at = td_now(), last_change_reason = 'PAPER_PROFILE_CHANGE'",
+            (name,),
+        )
+        conn.commit()
+
+
+def test_the_research_profile_never_starts_the_paper_bot(paper: Paper, db: TestDb) -> None:
+    select_paper_profile(db, "research")
+    with pytest.raises(PaperError, match="PROFILE_NO_DEPLOYMENT"):
+        paper.exchange.start()
+
+
+def test_the_paper_deposit_and_grid_follow_the_selected_profile(
+    paper: Paper, db: TestDb, sql: Sql
+) -> None:
+    select_paper_profile(db, "expanded")  # 100 cap, 25 reserve, 75 deployment
+    paper.exchange.start()
+    assert ledger(sql)["cash"] == D("100")
+    committed = D(0)
+    for _ in range(60):
+        paper.advance(6)
+        v = ledger(sql)
+        assert v["cash"] - v["reserved"] >= 25, v  # the profile's reserve, not the pilot's 15
+        assert v["reserved"] + v["cost"] <= 75, v
+        committed = max(committed, v["reserved"] + v["cost"])
+        if sql("SELECT count(*) AS n FROM paper_fills")[0]["n"] >= 4:
+            break
+    assert committed > D("35")  # the larger profile really sizes a larger grid
