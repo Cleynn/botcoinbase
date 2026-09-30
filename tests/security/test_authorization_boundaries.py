@@ -61,6 +61,10 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("GET", "/bot/{slug}/request"): "manage_bot",
     ("POST", "/bot/{slug}/reauth"): "manage_bot",
     ("POST", "/bot/{slug}/confirm"): "manage_bot",
+    # Phase 9: choosing the capital profile for a mode (ADMIN, reauth, typed phrase, bot PAUSED)
+    ("GET", "/bot/capital/{mode}/request"): "manage_bot",
+    ("POST", "/bot/capital/{mode}/reauth"): "manage_bot",
+    ("POST", "/bot/capital/{mode}/confirm"): "manage_bot",
     ("GET", "/review/proposals"): "manage_proposals",
     ("GET", "/review/proposals/import-enable/request"): "manage_proposals",
     ("POST", "/review/proposals/import-enable/reauth"): "manage_proposals",
@@ -121,6 +125,7 @@ def test_anonymous_visitors_cannot_use_any_protected_route(app: Any, client: Tes
             kind="implemented",
             action="archive",
             slug="pause",
+            mode="paper",
         )
         if method == "GET":
             response = client.get(path, follow_redirects=False)

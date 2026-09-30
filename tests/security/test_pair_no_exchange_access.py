@@ -102,9 +102,18 @@ def test_the_adapter_package_has_no_credential_loading_or_signing() -> None:
 
 def test_no_pair_route_can_create_or_cancel_an_order(app: Any) -> None:
     paths = [r.path for r in walk_routes(app)]
-    # Phase 8 added exactly the four confirmed bot controls (pause, resume, cancel-known, kill);
-    # none of these paths names an order, fill, account, balance or exchange.
-    bot_controls = {"/bot", "/bot/{slug}/request", "/bot/{slug}/reauth", "/bot/{slug}/confirm"}
+    # Phase 8 added exactly the four confirmed bot controls (pause, resume, cancel-known, kill) and
+    # Phase 9 the capital-profile selection; none of these paths names an order, fill, account,
+    # balance or exchange, and none of them can place or change an order.
+    bot_controls = {
+        "/bot",
+        "/bot/{slug}/request",
+        "/bot/{slug}/reauth",
+        "/bot/{slug}/confirm",
+        "/bot/capital/{mode}/request",
+        "/bot/capital/{mode}/reauth",
+        "/bot/capital/{mode}/confirm",
+    }
     assert not [
         p
         for p in paths
