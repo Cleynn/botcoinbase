@@ -185,18 +185,19 @@ class OrderPipeline:
             return PipelineResult("invalid", None, reasons=("INTENT_REFUSED",))
         return self.process(intent.id, book=book)
 
-    def _read_accounts(self) -> tuple[BalanceLike, ...] | None:
+    def _read_accounts(self) -> tuple[tuple[BalanceLike, ...] | None, str | None]:
+        """(accounts, failure code). Any failure means "funds unknown", which blocks BUY orders."""
         if self._list_accounts is None:
-            return None
+            return None, None
         try:
-            return tuple(self._list_accounts())
-        except Exception:  # any failure means "funds unknown", which blocks BUY orders
-            return None
+            return tuple(self._list_accounts()), None
+        except Exception:
+            return None, "FUNDS_READ_FAILED"
 
     def _authorize(
         self, intent_id: UUID, book: BookFacts | None
     ) -> PipelineResult | tuple[UUID, OrderRequest]:
-        accounts = self._read_accounts()  # the network read happens outside any transaction
+        accounts, read_error = self._read_accounts()  # the network read is outside any transaction
         now = self._clock.now()
         with self._storage.tx() as repos:
             intent = repos.safety.intent(intent_id)
@@ -205,6 +206,10 @@ class OrderPipeline:
             attempts = repos.safety.attempts_for_intent(intent_id)
             attempt_no = len(attempts) + 1
             client_id = client_order_id(intent_id, attempt_no)
+            if self._list_accounts is not None:  # a failed funds read counts towards API_FAILURES
+                repos.safety.add_api_event(
+                    intent.venue, "list_accounts", read_error is None, read_error, now
+                )
             facts = self._builder.build(
                 repos,
                 intent,

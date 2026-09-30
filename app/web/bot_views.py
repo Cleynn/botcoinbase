@@ -42,6 +42,7 @@ REASON_TEXT: Final[dict[str, str]] = {
     "REAUTH_REQUIRED": "confirm your password first",
     "PROFILE_UNCHANGED": "that profile is already selected",
     "PROFILE": "that capital profile does not exist",
+    "PROFILE_NOT_APPROVED": "only the pilot profile is approved in production",
 }
 
 ACTION_TEXT: Final[dict[str, tuple[str, tuple[str, ...]]]] = {

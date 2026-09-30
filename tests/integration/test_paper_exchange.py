@@ -498,3 +498,53 @@ def test_the_paper_deposit_and_grid_follow_the_selected_profile(
         if sql("SELECT count(*) AS n FROM paper_fills")[0]["n"] >= 4:
             break
     assert committed > D("35")  # the larger profile really sizes a larger grid
+
+
+def test_a_running_paper_session_blocks_a_paper_profile_change(paper: Paper, db: TestDb) -> None:
+    paper.exchange.start()
+    with pytest.raises(psycopg.errors.IntegrityError, match="paper session must be PAUSED"):
+        select_paper_profile(db, "expanded")
+
+
+def test_inventory_above_the_new_limits_blocks_a_downgrade(
+    paper: Paper, db: TestDb, sql: Sql
+) -> None:
+    paper.exchange.start()
+    for _ in range(60):
+        paper.advance(6)
+        if ledger(sql)["cost"] > 0:
+            break
+    assert ledger(sql)["cost"] > 0
+    paper.exchange.stop()  # PAUSED, open orders cancelled, inventory kept
+    with pytest.raises(psycopg.errors.IntegrityError, match="exceeds the limits"):
+        select_paper_profile(db, "research")
+    assert sql("SELECT paper_profile FROM bot_control")[0]["paper_profile"] == "pilot"
+
+
+def test_an_idle_paper_session_may_change_its_profile(paper: Paper, db: TestDb, sql: Sql) -> None:
+    select_paper_profile(db, "expanded")  # never started: nothing to protect
+    paper.exchange.start()
+    paper.exchange.stop()
+    select_paper_profile(db, "pilot")  # no inventory and no open orders: allowed
+    assert sql("SELECT paper_profile FROM bot_control")[0]["paper_profile"] == "pilot"
+
+
+def test_the_safety_cancel_is_never_blocked_even_if_limits_were_already_exceeded(
+    paper: Paper, db: TestDb, sql: Sql
+) -> None:
+    """The state the review reproduced (inventory above a downgraded profile) is now unreachable
+    through the guard; force it with the guard disabled and prove the cancel still succeeds."""
+    paper.exchange.start()
+    for _ in range(60):
+        paper.advance(6)
+        if ledger(sql)["cost"] > 0 and ledger(sql)["reserved"] > 0:
+            break
+    assert ledger(sql)["cost"] > 0 and ledger(sql)["reserved"] > 0
+    with psycopg.connect(db.owner_target().conninfo(), autocommit=True) as conn:
+        conn.execute("ALTER TABLE bot_control DISABLE TRIGGER bot_control_guard_trigger")
+        conn.execute("ALTER TABLE bot_control DISABLE TRIGGER bot_control_record_trigger")
+        conn.execute("UPDATE bot_control SET paper_profile = 'research'")
+        conn.execute("ALTER TABLE bot_control ENABLE TRIGGER bot_control_record_trigger")
+        conn.execute("ALTER TABLE bot_control ENABLE TRIGGER bot_control_guard_trigger")
+    assert paper.exchange.cancel_for_safety("TEST") >= 1
+    assert ledger(sql)["reserved"] == 0

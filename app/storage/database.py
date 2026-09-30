@@ -7,6 +7,7 @@ migrate command uses the database owner, and it is never run by the web process.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import sys
@@ -50,6 +51,10 @@ def migration_files() -> dict[int, Path]:
     if list(found) != expected:
         raise SchemaError("migration files must be numbered contiguously from 0001")
     return found
+
+
+def migration_checksum(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def head_version() -> int:
@@ -174,14 +179,42 @@ def migrate(
                     db, sql.Identifier(app_role), sql.Identifier(ctl_role)
                 )
             )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                "version integer PRIMARY KEY, "
+                "sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'), "
+                "applied_at timestamptz NOT NULL DEFAULT now())"
+            )
+            conn.execute("REVOKE ALL ON schema_migrations FROM PUBLIC")
             version = current_version(conn) or 0
             if version > max(files):
                 raise SchemaError("database schema is newer than this code; refusing to migrate")
+            recorded: dict[int, str] = {
+                int(row[0]): str(row[1])
+                for row in conn.execute("SELECT version, sha256 FROM schema_migrations").fetchall()
+            }
             for number, path in files.items():
                 if number <= version:
+                    # an applied migration must still be the file that was applied
+                    digest = migration_checksum(path)
+                    if number in recorded and recorded[number] != digest:
+                        raise SchemaError(
+                            f"migration {number:04d} was modified after it was applied; "
+                            "add a new migration instead"
+                        )
+                    if number not in recorded:  # a database from before checksums: trust once
+                        conn.execute(
+                            "INSERT INTO schema_migrations (version, sha256) VALUES (%s, %s)",
+                            (number, digest),
+                        )
                     continue
                 with conn.transaction():
                     conn.execute(path.read_text(encoding="utf-8"))
+                    conn.execute(
+                        "INSERT INTO schema_migrations (version, sha256) VALUES (%s, %s) "
+                        "ON CONFLICT (version) DO UPDATE SET sha256 = EXCLUDED.sha256",
+                        (number, migration_checksum(path)),
+                    )
                     conn.execute(
                         "INSERT INTO schema_meta (id, version) VALUES (true, %s) "
                         "ON CONFLICT (id) DO UPDATE "
@@ -192,6 +225,11 @@ def migrate(
             return version
         finally:
             conn.execute("SELECT pg_advisory_unlock(%s)", (_MIGRATION_LOCK,))
+
+
+def _has_checksums(conn: psycopg.Connection[Any]) -> bool:
+    row = conn.execute("SELECT to_regclass('public.schema_migrations') IS NOT NULL").fetchone()
+    return bool(row and row[0])
 
 
 def rollback(target: OwnerTarget, *, to_version: int) -> int:
@@ -205,6 +243,8 @@ def rollback(target: OwnerTarget, *, to_version: int) -> int:
                 conn.execute(down.read_text(encoding="utf-8"))
                 if version - 1 >= 1:
                     conn.execute("UPDATE schema_meta SET version = %s WHERE id", (version - 1,))
+                if _has_checksums(conn):
+                    conn.execute("DELETE FROM schema_migrations WHERE version >= %s", (version,))
             version -= 1
         return version
 

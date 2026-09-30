@@ -25,7 +25,7 @@ import psycopg
 
 from app.auth.audit import AuditWriter
 from app.capital.funds import Funds, FundsUnavailable, paper_funds, usable_quote
-from app.capital.profiles import PROFILES
+from app.capital.profiles import DEFAULT_PROFILE, PROFILES
 from app.config import Settings
 from app.domain.enums import AuditEventType as Evt
 from app.domain.enums import AuditResult as Res
@@ -282,6 +282,9 @@ class ControlService:
             return Outcome("invalid", ("MODE",))
         if profile not in PROFILES:  # checked first: a bad request never spends the reauth
             return Outcome("invalid", ("PROFILE",))
+        if self._settings.environment == "production" and profile != DEFAULT_PROFILE:
+            # larger profiles are not approved for production (DEC-024); nothing is spent
+            return Outcome("not_allowed", ("PROFILE_NOT_APPROVED",))
         action = f"{mode}_profile"
         detail: dict[str, str | int | bool | None] = {"mode": mode, "profile": profile}
         refused = self._confirmed(ctx, actor, action, PROFILE_PHRASES[mode], typed, detail)
@@ -320,7 +323,12 @@ class ControlService:
             Evt.BOT_PROFILE_CHANGED,
             Res.SUCCESS,
             f"{mode.upper()}_PROFILE_CHANGE",
-            {"mode": mode, "from": current, "to": profile, "live_gate": "BLOCKED"},
+            {
+                "mode": mode,
+                "from": current,
+                "to": profile,
+                "live_gate": panel(self._settings).status,
+            },
         )
         return Outcome("ok")
 

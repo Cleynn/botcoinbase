@@ -192,6 +192,22 @@ def test_a_failed_balance_read_blocks_the_buy(safe: SafetyEnv) -> None:
     assert safe.fake.calls.count("submit") == 0
 
 
+def test_a_failed_funds_read_is_recorded_and_repeated_failures_open_the_api_rule(
+    safe: SafetyEnv, sql: Sql
+) -> None:
+    safe.running()
+    limit = safe.settings.safety.api_failure_threshold
+    for i in range(limit):
+        safe.fake.fail("list_accounts", Fault("timeout"))
+        safe.pipeline.submit(safe.proposal(), source="test", slot=f"f{i}", book=safe.book())
+    failed = sql(
+        "SELECT code FROM api_events WHERE operation = 'list_accounts' AND NOT ok ORDER BY id"
+    )
+    assert len(failed) == limit and {r["code"] for r in failed} == {"FUNDS_READ_FAILED"}
+    result = safe.pipeline.submit(safe.proposal(), source="test", slot="after", book=safe.book())
+    assert result.kind == "blocked" and "API_FAILURES" in result.reasons
+
+
 def test_no_funds_source_means_no_buy(safe: SafetyEnv) -> None:
     safe.running()
     bare = OrderPipeline(
@@ -256,6 +272,28 @@ def test_a_live_profile_choice_leaves_the_live_gate_blocked(safe: SafetyEnv) -> 
     assert live_gate.panel().status == "BLOCKED"
     assert safe.control_row().live_profile == "medium"
     assert live_gate.order_gate("LIVE", safe.settings) == (False, "LIVE_GATE_BLOCKED")
+
+
+def test_production_accepts_only_the_pilot_profile_and_spends_nothing_on_a_refusal(
+    safe: SafetyEnv, sql: Sql, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prod = safe.settings.model_copy(update={"environment": "production"})
+    monkeypatch.setattr(safe.control, "_settings", prod)
+    safe.reauth.available = True
+    out = safe.control.set_profile(
+        safe.ctx, safe.actor, "live", "expanded", PROFILE_PHRASES["live"]
+    )
+    assert out.kind == "not_allowed" and out.reasons == ("PROFILE_NOT_APPROVED",)
+    assert safe.reauth.consumed == 0 and events(sql) == []
+    assert safe.control_row().live_profile == "pilot"
+
+
+def test_the_audit_records_the_real_live_gate_status(safe: SafetyEnv, sql: Sql) -> None:
+    safe.reauth.available = True
+    safe.control.set_profile(safe.ctx, safe.actor, "paper", "expanded", PROFILE_PHRASES["paper"])
+    row_ = sql("SELECT detail FROM audit_events WHERE event_code = 'bot.profile_changed'")[0]
+    detail = row_["detail"] if isinstance(row_["detail"], dict) else json.loads(row_["detail"])
+    assert detail["live_gate"] == live_gate.panel(safe.settings).status == "BLOCKED"
 
 
 def test_the_two_profile_phrases_are_the_specified_ones_and_distinct_from_the_four() -> None:

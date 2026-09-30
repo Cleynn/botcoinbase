@@ -567,6 +567,13 @@ class Settings(BaseModel):
             raise ValueError("mode must be BACKTEST or PAPER; LIVE is not representable")
         return value
 
+    @model_validator(mode="after")
+    def _production_uses_the_pilot_profile(self) -> Settings:
+        """The larger profiles are for tests and paper research until an independent review."""
+        if self.environment == "production" and self.pair_policy.capital_profile != DEFAULT_PROFILE:
+            raise ValueError("production uses only the pilot capital profile")
+        return self
+
 
 def is_placeholder(value: str) -> bool:
     lowered = value.lower()

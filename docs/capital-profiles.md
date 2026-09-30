@@ -61,6 +61,8 @@ at a time, and it is recorded in `bot_control_history` (`PAPER_PROFILE` / `LIVE_
 - The LIVE profile is **recorded only**. LIVE is unrepresentable in this build; selecting a profile
   cannot open the live gate, which stays `LIVE TRADING BLOCKED`.
 - A profile change creates no order and queues no command.
+- **PAPER profile changes need an idle paper side (DEC-025):** the paper session must be PAUSED, there must be no open paper orders, and existing cash and inventory must fit the new limits. The bot's own PAUSED state is not enough, because the paper trader does not follow it.
+- Production accepts only `pilot` (configuration and the control service both refuse the others).
 
 ## Limits and follow-ups
 - `safety.per_order_cap` is now optional (None = the profile's cap) and may only tighten it.

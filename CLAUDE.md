@@ -7,7 +7,7 @@ Read `docs/current-handoff.md` and `docs/decisions.md` (DEC-001..DEC-024) for de
 fast path. Anything not listed under "Verified" below must be treated as unverified.
 
 ## 1. Current status
-Phases 1–9 are implemented and pushed (HEAD `2ce7565`). Nothing has been deployed or run in Docker.
+Phases 1–9 and the Phase 9 security-review fixes (DEC-025) are implemented and pushed. Nothing has been deployed or run in Docker.
 - 1–3 auth/sessions/audit chain, pair research; 4 pairs lifecycle; 5 OHLCV, backtest, paper trader;
   6 read-only LLM review packages; 7 LLM proposal import/review (no auto-apply);
   8 safety machinery (risk engine, kill switch, breaker, reconciliation, recovery, control workflow,
@@ -17,6 +17,11 @@ Phases 1–9 are implemented and pushed (HEAD `2ce7565`). Nothing has been deplo
   **NOT APPROVED — REQUIRED FIXES** (paper-only scope).
 
 ## 2. Most recent work (newest first)
+0. Phase 9 review fixes (DEC-025, migration 0008): paper profile changes need an idle paper side
+   (session PAUSED, no open orders, state inside the new limits; the paper capital check never blocks
+   a cancel); order authorization serialized (`bot_control` FOR SHARE + advisory lock); migration
+   checksums (`schema_migrations`, owner-only); failed funds reads recorded as API events; production
+   accepts only the `pilot` profile; audit records the real live-gate status.
 1. Phase 9 (DEC-024, `docs/capital-profiles.md`): immutable `capital_profiles` table (migration 0007),
    profiles `pilot` (default 50/15/35/12 = cap/reserve/deployment/per-order), `expanded` (100/25/75/25),
    `medium` (250/50/150/50), `research` (0). PAPER/LIVE profile selection on the Bot page
@@ -31,12 +36,14 @@ Phases 1–9 are implemented and pushed (HEAD `2ce7565`). Nothing has been deplo
 
 ## 3. Verified vs not verified
 **Verified (real PostgreSQL 16 via pgserver, real promtool/prometheus/node_exporter, real Chromium):**
-- Full suite last completed run: 3095 passed / 3 failed (3 reviewed route inventories that did not
-  know the new `/bot/capital/*` routes). They were fixed; `tests/security` then passed (418).
-  **The full suite was not re-run after that fix** — re-run it first.
-- `tests/integration/test_capital_profiles.py` 38 passed; `tests/unit/test_capital*.py` passed.
+- Full suite on the review-fix commit: 3109 passed / 1 failed; the failure was a wrong assumption in
+  one new test (fixed; `test_capital_profiles.py` then 41 passed). The fixed file was re-run alone,
+  the whole suite was not re-run once more after that one-test fix.
+- Concurrency tests (`test_safety_concurrency.py`) fail when the two locks are removed and pass with
+  them (negative control run). The H1 regression tests include the exact reproduced wedge state.
+- Migration checksum guard tested (edit of an applied migration is refused).
 - Real-browser check of the Bot page: 28/28 (incl. no horizontal scroll at 375 px).
-- Migration 0006 and 0007 roll back and re-apply (`test_rollback_and_remigrate_round_trip`).
+- Migrations 0006, 0007 and 0008 roll back and re-apply (`test_rollback_and_remigrate_round_trip`).
 - ruff format/check and `mypy app tests scripts` clean.
 
 **NOT verified (do not claim otherwise):**
@@ -45,8 +52,10 @@ Phases 1–9 are implemented and pushed (HEAD `2ce7565`). Nothing has been deplo
 - Docker/compose start, Caddy config, DNS/TLS, public-port exposure, Grafana live login, backup/restore.
 - `expanded` / `medium` profiles beyond tests (no paper soak). Loss ($10) and drawdown (20%) SQL
   ceilings are not scaled per profile and have no dedicated SQL regression test with fills.
-- Concurrency of order authorization (see section 7). Independent security review: none (all
-  reviews in `docs/decisions.md` say `review: SELF`).
+- Kill-switch-versus-authorization races beyond the two tested cases. Independent security review:
+  none (all reviews in `docs/decisions.md` say `review: SELF`).
+- The checksum guard trusts a database that predates it once, so an earlier in-place edit of 0006
+  stays undetectable there.
 
 ## 4. Files for the next task
 | Area | Files |
@@ -105,26 +114,24 @@ Financial:
   before an independent review (DEC-024).
 
 ## 6. Smallest next safe task
-Re-run the full suite on HEAD and record the result in `docs/current-handoff.md`
-(`make`-free: `uv run pytest`, with the two monitoring env vars set). Then, in order of size:
-1. Add `tradingdots_bot*` alert rules (kill switch active, breaker open, recovery incomplete,
-   reconciliation age/mismatch, UNKNOWN attempts) with `promtool test rules` — no money-path change.
-2. Serialize order authorization (see section 7, item 1) with a concurrency test.
+Add `tradingdots_bot*` alert rules (kill switch active, breaker open, recovery incomplete,
+reconciliation age/mismatch, UNKNOWN attempts) in `infra/monitoring/alert_rules.yml` with
+`promtool test rules` — no money-path change. Then: a database-outage fault test, then backup/restore.
 
 ## 7. Blockers and open issues
-1. **HIGH (before any execution phase):** `order_attempt_guard` locks only the decision row. Concurrent
-   attempt inserts can both pass the cap/reserve checks, and a concurrent kill/pause can be missed.
-   Fix: `SELECT ... FROM bot_control FOR SHARE` in the guard plus a `pg_advisory_xact_lock` around
-   `td_authorize_order`; add concurrency tests.
-2. **HIGH:** migration 0006 was edited in place after being written (no checksum guard). Any database
-   already at schema 6 before that edit lacks the fixes; roll back to 5 and re-apply, or add a
-   checksum check.
+1. Resolved in DEC-025: order authorization serialization (H2), migration checksum guard for new
+   databases (H3), paper-profile change while the paper side is active (H1).
+2. Re-check after any new money-path change: concurrent authorization, kill switch / pause / profile
+   change racing an insert, and that `cancel_for_safety` can never be blocked.
 3. No independent security review (all `review: SELF`). Security review items still open: M3 caller-
    supplied order book unverified, M4 no scheduler/heartbeat, M5 no table retention, M6 restrictive
    actions depend on audit availability, M7 limited reconciliation lookback; lows: VIEWER sees client
    order ids, FAKE venue legal in the production schema, no per-session phrase throttle, backup docs,
    0006 down-migration destroys safety history.
-4. No alerts on bot safety metrics; no database-outage fault test (`tests/faults/` is empty); no
+4. M1: the exchange-funds check (`INSUFFICIENT_FUNDS`) is host-process only; the database cannot read
+   the exchange, so a compromised host could write an ALLOW that skips it (reconciliation's balance
+   check is the independent control). M3: the paper deposit is fixed at the first start.
+   No alerts on bot safety metrics; no database-outage fault test (`tests/faults/` is empty); no
    retention/pruning of DB tables; no backup/restore test.
 5. Release gate (NOT EVIDENCED): DNS/TLS for `tradingdots.onthewall.ovh` and
    `grafana.tradingdots.onthewall.ovh`, `caddy validate`, Docker start, public-port scan, Grafana live

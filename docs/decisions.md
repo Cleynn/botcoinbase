@@ -246,6 +246,15 @@ Self-review (security-engineer pass) found one BLOCKER, three HIGH, two MEDIUM i
 - Not verified: any real Coinbase balance response (no signer or credentials exist); the loss/drawdown SQL ceilings are not scaled by profile; `expanded`/`medium` have no paper soak.
 - review: SELF. **No independent security review has been performed on this change.** Because it raises the maximum capital the code can be configured to use, it needs one before any profile other than `pilot` is used outside tests.
 
+### DEC-025: Phase 9 security-review fixes
+Fixes for the Phase 9 security review (H1, H2, H3, M2, M4, M5, L1). New migration 0008 (0006 and 0007 are not edited).
+- H1 (reproduced before the fix): the paper profile could change while the paper session ran, and a downgrade with inventory made the safety cancel fail. The database guard now also requires `paper_session` PAUSED, no OPEN paper orders, and existing cash/inventory inside the new profile's limits; the paper capital check never blocks a cancel that only releases reserve. Regression tests include the exact reproduced state (forced with the guard disabled), where the cancel now succeeds.
+- H2: `order_attempt_guard` takes `bot_control` FOR SHARE and runs the money rules under `pg_advisory_xact_lock`, so a kill switch, pause or profile change waits for an authorization in flight and two authorizations cannot both pass the reserve. Negative control: with the two locks removed, both new concurrency tests fail.
+- H3: `migrate` records a SHA-256 per migration in an owner-only `schema_migrations` table and refuses to run if an applied file changed. Limit: a database that predates this check is trusted once (its checksums are recorded on the first run), so an earlier in-place edit of 0006 is still undetectable there.
+- M2: a failed funds read is recorded as an `api_events` row (`FUNDS_READ_FAILED`) and counts toward `API_FAILURES`. M4/M5: production refuses any capital profile but `pilot` (config validation and the control service). L1: the audit records the live-gate status from the gate itself.
+- Still open (unchanged): M1 the exchange-funds check is host-process only (the database cannot read the exchange); M3 the paper deposit is fixed at the first start; the carried-over mediums/lows (no scheduler, retention, bot alerts, database-outage test, backup/restore test, independent review).
+- review: SELF. **No independent security review has been performed.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

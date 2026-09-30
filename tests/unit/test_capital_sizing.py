@@ -136,3 +136,29 @@ def test_the_grid_builder_checks_against_the_named_profile() -> None:
     assert err.value.code == "CAPITAL_POLICY"
     with pytest.raises(GridRejected):
         CapitalPolicy(D("100"), D("25"), D("75"), profile="nope").validate()
+
+
+def test_production_refuses_a_larger_capital_profile(
+    prod_env: dict[str, str], config_copy: Any
+) -> None:
+    import yaml
+
+    from app.config import ConfigError, load_settings
+
+    path = config_copy / "pair-policy.yaml"
+    data = yaml.safe_load(path.read_text())
+    assert (
+        load_settings({**prod_env, "TD_CONFIG_DIR": str(config_copy)}).environment == "production"
+    )
+    data.update(capital_profile="expanded", total_capital="100", min_reserve="25")
+    data["max_deployment"] = "75"
+    path.write_text(yaml.safe_dump(data))
+    with pytest.raises(ConfigError, match="pilot"):
+        load_settings({**prod_env, "TD_CONFIG_DIR": str(config_copy)})
+    # the same file is fine outside production
+    assert (
+        load_settings(
+            {"TD_ENVIRONMENT": "test", "TD_SECRET_KEY": "x" * 40, "TD_CONFIG_DIR": str(config_copy)}
+        ).pair_policy.capital_profile
+        == "expanded"
+    )
