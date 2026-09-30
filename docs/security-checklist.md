@@ -42,7 +42,7 @@
 
 ## Operator evidence still required
 - [ ] Host baseline (SSH key-only, no root login, default-deny firewall incl. `DOCKER-USER`, IPv6, upgrades, CAA, chrony)
-- [ ] DNS, TLS issuance, HSTS review; external port scan shows only 80/443
+- [ ] DNS, TLS issuance, HSTS review; external port scan shows only 80/443 (partial: `tradingdots.onthewall.ovh` resolved to 92.222.190.142 from the authoring sandbox on 2026-09-30; `grafana.tradingdots.onthewall.ovh` did not resolve; TLS not checkable there, egress is proxied)
 - [ ] `docker compose up` actually starts: images build, `migrate` completes, `app` healthy, roles created (no Docker daemon was available)
 - [ ] Prometheus, Grafana, node-exporter (and cAdvisor if enabled) start and become healthy in Compose; Grafana loads the provisioned datasource and dashboards and shows data; the admin-password reset command in `docs/grafana-access.md` works
 - [ ] `caddy validate`; Caddy proxies Grafana over HTTPS; real Caddy log lines contain no cookies/authorization/full IPs; Caddy forwards a single client address in `X-Forwarded-For` from the `172.29.10.0/24` network

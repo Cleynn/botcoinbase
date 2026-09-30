@@ -4,6 +4,8 @@
 
 ## Before first start (operator)
 1. DNS: A (and AAAA if used) records for `tradingdots.onthewall.ovh` and `grafana.tradingdots.onthewall.ovh` to the VPS. Add a CAA record.
+   - Known: `tradingdots.onthewall.ovh` is `92.222.190.142` (IPv4; the operator supplied it, and a resolver in the authoring sandbox returned the same on 2026-09-30). The Grafana hostname returned no record from that resolver: create `grafana.tradingdots.onthewall.ovh` -> the same VPS before first start, or Caddy cannot obtain its certificate. The IPv6 address is not recorded.
+   - Check from any machine: `dig +short A tradingdots.onthewall.ovh` must print `92.222.190.142`; `dig +short A grafana.tradingdots.onthewall.ovh` must print the VPS address; `dig +short AAAA` for both must be empty or the VPS's own IPv6, never another host. Caddy needs inbound TCP 80 and 443 on that address for the ACME HTTP/TLS challenge.
 2. Firewall: default-deny inbound, allow SSH (key-only), TCP 80 and 443. Docker-published ports bypass `ufw`; restrict with `DOCKER-USER` rules and verify with an external scan.
 3. SSH key-only, no root login, unattended security upgrades, time sync (chrony).
 4. Install Docker Engine + Compose plugin.
