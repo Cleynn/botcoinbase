@@ -119,11 +119,7 @@ def test_a_key_that_is_not_p256_is_refused(tmp_path: Path) -> None:
         load_credentials(write_key(tmp_path, key=pem(ec.SECP384R1())))
     assert err.value.code == "KEY_NOT_P256"
     with pytest.raises(CredentialError) as err2:
-        load_credentials(
-            write_key(
-                tmp_path, key="not-a-key " + "PRIVATE" + " KEY " + "garbage"
-            )
-        )
+        load_credentials(write_key(tmp_path, key="not-a-key " + "PRIVATE" + " KEY " + "garbage"))
     assert err2.value.code == "KEY_FORMAT"
     with pytest.raises(CredentialError) as err3:
         load_credentials(write_key(tmp_path, key="just text"))

@@ -5,6 +5,7 @@ may write what; this module never decides that."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -351,6 +352,58 @@ class SafetyRepository:
             "INSERT INTO venue_baselines (venue, currency, amount, recorded_at) VALUES (%s, %s, %s, %s)",
             (venue, currency, amount, now),
         )
+
+    # ------------------------------------------------------------------ live arming (host writes)
+    def live_armed(self, now: datetime) -> bool:
+        """The database's own answer: an unrevoked, unexpired arming not undone by a later kill
+        switch, breaker trip, recovery reset or LIVE profile change."""
+        row = self._conn.execute("SELECT td_live_armed(%s) AS armed", (now,)).fetchone()
+        return bool(row and row["armed"])
+
+    def active_arming(self, now: datetime) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT id, armed_at, expires_at, armed_by, key_hint FROM live_arming "
+            "WHERE revoked_at IS NULL AND expires_at > %s ORDER BY armed_at DESC LIMIT 1",
+            (now,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def latest_attestations(self) -> dict[str, tuple[datetime, str]]:
+        rows = self._conn.execute(
+            "SELECT DISTINCT ON (code) code, attested_at, attested_by FROM live_attestations "
+            "ORDER BY code, attested_at DESC"
+        ).fetchall()
+        return {r["code"]: (r["attested_at"], r["attested_by"]) for r in rows}
+
+    def add_attestation(self, code: str, by: str, note: str, now: datetime) -> None:
+        self._conn.execute(
+            "INSERT INTO live_attestations (code, attested_at, attested_by, note) "
+            "VALUES (%s, %s, %s, %s)",
+            (code, now, by, note),
+        )
+
+    def add_arming(
+        self,
+        arming_id: UUID,
+        *,
+        armed_at: datetime,
+        expires_at: datetime,
+        armed_by: str,
+        key_hint: str,
+        checks: dict[str, Any],
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO live_arming (id, armed_at, expires_at, armed_by, key_hint, checks) "
+            "VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
+            (arming_id, armed_at, expires_at, armed_by, key_hint, json.dumps(checks)),
+        )
+
+    def revoke_arming(self, now: datetime) -> int:
+        cur = self._conn.execute(
+            "UPDATE live_arming SET revoked_at = %s WHERE revoked_at IS NULL AND expires_at > %s",
+            (now, now),
+        )
+        return cur.rowcount
 
     def baselines(self, venue: str) -> dict[str, Decimal]:
         rows = self._conn.execute(

@@ -123,25 +123,47 @@ def test_safety_and_exchange_code_imports_no_process_or_unsafe_deserialisation_c
         assert not [m for m in mods if m.split(".")[0] in UNSAFE], path
 
 
-def test_only_the_private_reader_uses_an_http_client_and_no_module_signs_anything() -> None:
+# The ONLY modules that may sign a request or read a key file (Phase 10, DEC-026). Anything else in
+# the safety, exchange, API, auth or web code that imports crypto or reads files/env fails below.
+SIGNING_MODULES = {"cdp_signer.py", "credentials.py"}
+HTTP_MODULES = {"coinbase_private.py", "coinbase_live.py"}  # the read adapter and the live gateway
+
+
+def test_only_the_exchange_adapters_use_an_http_client_and_only_two_modules_sign() -> None:
     http_users = {p.name for p, s in sources(SAFETY, EXCHANGE).items() if "httpx" in imports_of(s)}
-    assert http_users == {"coinbase_private.py"}
+    assert "coinbase_private.py" in http_users and http_users <= HTTP_MODULES
+    crypto_users = set()
     for path, source in sources(SAFETY, EXCHANGE).items():
-        assert not [m for m in imports_of(source) if m.split(".")[0] in CRYPTO], path
-        assert not re.search(r"os\.environ|getenv|read_text\(|open\(", source), path
+        if [m for m in imports_of(source) if m.split(".")[0] in CRYPTO]:
+            crypto_users.add(path.name)
+        if path.name != "credentials.py":  # the one module that reads the key file
+            assert not re.search(r"os\.environ|getenv|read_text\(|open\(", source), path
+    assert crypto_users <= SIGNING_MODULES  # a stray signer elsewhere would fail here
 
 
-def test_the_only_signer_in_the_build_refuses() -> None:
-    signers = [
+def test_the_web_tier_never_imports_the_signing_or_credential_modules() -> None:
+    web = (APP / "web", APP / "api", APP / "auth", SAFETY)
+    for path, source in sources(*web).items():
+        if path.name in ("factory.py",):
+            continue
+        mods = imports_of(source)
+        assert not [
+            m for m in mods if m.startswith(("app.exchange.credentials", "app.exchange.cdp_signer"))
+        ], path
+
+
+def test_only_the_null_signer_and_the_cdp_signer_exist_and_the_null_one_refuses() -> None:
+    signers = sorted(
         p.name
         for p, s in sources(
             APP / "adapters", APP / "exchange", APP / "safety", APP / "api", APP / "auth"
         ).items()
         if re.search(r"class \w*Signer", s)
-    ]
-    assert signers == ["coinbase_private.py"]
+    )
+    assert signers == ["cdp_signer.py", "coinbase_private.py"]
     source = (EXCHANGE / "coinbase_private.py").read_text()
     assert len(re.findall(r"class \w*Signer", source)) == 2  # the protocol and the null signer
+    assert len(re.findall(r"class \w*Signer", (EXCHANGE / "cdp_signer.py").read_text())) == 1
     from app.exchange.errors import NoCredentials
 
     try:
@@ -266,6 +288,8 @@ def test_all_safety_sql_writes_target_only_safety_tables() -> None:
         "order_hints",
         "api_events",
         "control_commands",
+        "live_attestations",  # Phase 10: host-written, append-only
+        "live_arming",  # Phase 10: host-written, revoke-only, at most 24 hours
     }, writes
     assert "TRUNCATE" not in source and "DROP" not in source
 
@@ -315,10 +339,14 @@ def test_the_phase8_audit_events_are_in_the_catalogue() -> None:
 # ------------------------------------------------------------------ live stays blocked
 def test_live_is_unrepresentable_in_modes_venues_and_the_gate() -> None:
     assert "LIVE" not in constants.ALLOWED_MODES and constants.LIVE_TRADING_STATUS == "BLOCKED"
-    assert VENUES == ("PAPER", "FAKE") and live_gate.LIVE_UNBLOCK_PRESENT is False
+    # Phase 10 (DEC-026): COINBASE is a representable venue, but live is never unconditional: no LIVE
+    # mode or pair state exists, the default gate is BLOCKED, and orders need a host arming.
+    assert VENUES == ("PAPER", "FAKE", "COINBASE") and live_gate.LIVE_UNBLOCK_PRESENT is False
     assert live_gate.panel().status == "BLOCKED"
-    sql = (APP / "storage" / "migrations" / "0006_safety.sql").read_text()
-    assert not re.search(r"IN \([^)]*'LIVE'[^)]*\)", sql.replace("'LIVE_READ'", ""))
+    assert live_gate.order_gate("COINBASE", object(), live_armed=False)[0] is False  # type: ignore[arg-type]
+    for name in ("0006_safety.sql", "0009_live_venue.sql"):
+        sql = (APP / "storage" / "migrations" / name).read_text()
+        assert not re.search(r"IN \([^)]*'LIVE'[^)]*\)", sql.replace("'LIVE_READ'", ""))
 
 
 def test_the_gate_panel_is_static_html_with_no_control() -> None:

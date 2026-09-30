@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Final
 
-VENUES: Final = ("PAPER", "FAKE")  # LIVE is unrepresentable (DB CHECK + gate)
+VENUES: Final = ("PAPER", "FAKE", "COINBASE")  # COINBASE orders also need a host arming (DB + gate)
 
 BLOCK_REASONS: Final[dict[str, str]] = {
     "LIVE_GATE_BLOCKED": "the live gate is not open for this venue",
