@@ -50,7 +50,7 @@ Phases 1–9 and the Phase 9 security-review fixes (DEC-025) are implemented and
 - Any real Coinbase response. There is no signer and no credentials (`NullSigner`;
   `app/exchange/factory.py` returns None). The exchange-funds read has only run against `FakeExchange`.
 - Docker/compose start, Caddy config, TLS, public-port exposure, Grafana live login, backup/restore;
-  DNS only for the app host (see section 7, item 5).
+  DNS A records for both hosts resolved once from the sandbox (see section 7, item 5).
 - `expanded` / `medium` profiles beyond tests (no paper soak). Loss ($10) and drawdown (20%) SQL
   ceilings are not scaled per profile and have no dedicated SQL regression test with fills.
 - Kill-switch-versus-authorization races beyond the two tested cases. Independent security review:
@@ -136,9 +136,9 @@ reconciliation age/mismatch, UNKNOWN attempts) in `infra/monitoring/alert_rules.
    retention/pruning of DB tables; no backup/restore test.
 5. Release gate (NOT EVIDENCED): TLS for both hosts, `caddy validate`, Docker start, public-port scan,
    Grafana live login, backup/restore. DNS: the app host `tradingdots.onthewall.ovh` is IPv4
-   `92.222.190.142` (operator-supplied; also resolved from the sandbox on 2026-09-30). The Grafana host
-   `grafana.tradingdots.onthewall.ovh` did **not** resolve from the sandbox: create its record (same VPS)
-   before first start or Caddy cannot issue its certificate. IPv6 unknown. See `docs/operational-runbook.md`.
+   `92.222.190.142` (operator-supplied). Both `tradingdots.onthewall.ovh` and
+   `grafana.tradingdots.onthewall.ovh` resolved to it from the sandbox on 2026-09-30 (no AAAA records).
+   See `docs/operational-runbook.md`.
 6. Design debt: limits duplicated in SQL (12/15/35 style literals now profile-driven, but loss $10 and
    drawdown 20% are hardcoded) and Python; `safety_repositories.py` is large; Python and SQL money
    rules can drift (a constants/parity test exists only for the profile table).
