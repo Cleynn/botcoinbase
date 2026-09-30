@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(app/**)", "Write(app/**)",
+      "Edit(tests/**)", "Write(tests/**)",
+      "Bash(python3:*)", "Bash(sed:*)", "Bash(.venv/bin/python:*)", "Bash(uv:*)"
+    ]
+  }
+}
