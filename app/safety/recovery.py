@@ -81,7 +81,7 @@ class RecoveryService:
             if not repeat:
                 repos.safety.update_control(control.version, now, **changes)
             closed = unknown = 0
-            for venue in ("PAPER", "FAKE"):
+            for venue in ("PAPER", "FAKE", "COINBASE"):
                 for attempt in repos.safety.attempts_in(("AUTHORIZED", "SUBMITTING"), venue):
                     if attempt.state == "AUTHORIZED":
                         closed += repos.safety.transition(

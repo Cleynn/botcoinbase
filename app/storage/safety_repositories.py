@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from app.capital.trading import TradingConfig
 from app.storage.repositories import Conn
 
 _CONTROL_COLUMNS = frozenset(
@@ -352,6 +353,59 @@ class SafetyRepository:
             "INSERT INTO venue_baselines (venue, currency, amount, recorded_at) VALUES (%s, %s, %s, %s)",
             (venue, currency, amount, now),
         )
+
+    # ------------------------------------------------------------------ trading configuration
+    def trading_config(self, mode: str, *, for_update: bool = False) -> TradingConfig:
+        row = self._conn.execute(
+            "SELECT mode, max_pairs, levels_per_grid, quote_per_grid, invested_cap, reserve, "
+            "per_order_cap, version FROM trading_config WHERE mode = %s"
+            + (" FOR UPDATE" if for_update else ""),
+            (mode,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("trading configuration row is missing")
+        return TradingConfig(**row)
+
+    def trading_state(self, *, for_update: bool = False) -> tuple[str, int]:
+        """(active mode, version)."""
+        row = self._conn.execute(
+            "SELECT active_mode, version FROM trading_state WHERE id"
+            + (" FOR UPDATE" if for_update else "")
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("trading state row is missing")
+        return str(row["active_mode"]), int(row["version"])
+
+    def active_trading_config(self) -> TradingConfig:
+        return self.trading_config(self.trading_state()[0])
+
+    def update_trading_config(self, cfg: TradingConfig, now: datetime) -> bool:
+        """Compare-and-set on the version; False means someone else changed it first."""
+        cur = self._conn.execute(
+            "UPDATE trading_config SET max_pairs = %s, levels_per_grid = %s, quote_per_grid = %s, "
+            "invested_cap = %s, reserve = %s, per_order_cap = %s, version = version + 1, "
+            "updated_at = %s WHERE mode = %s AND version = %s",
+            (
+                cfg.max_pairs,
+                cfg.levels_per_grid,
+                cfg.quote_per_grid,
+                cfg.invested_cap,
+                cfg.reserve,
+                cfg.per_order_cap,
+                now,
+                cfg.mode,
+                cfg.version,
+            ),
+        )
+        return cur.rowcount == 1
+
+    def set_active_mode(self, mode: str, expected_version: int, now: datetime) -> bool:
+        cur = self._conn.execute(
+            "UPDATE trading_state SET active_mode = %s, version = version + 1, updated_at = %s "
+            "WHERE id AND version = %s",
+            (mode, now, expected_version),
+        )
+        return cur.rowcount == 1
 
     # ------------------------------------------------------------------ live arming (host writes)
     def live_armed(self, now: datetime) -> bool:

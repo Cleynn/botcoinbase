@@ -20,7 +20,7 @@ from app.safety.host_control import HostControl
 from app.storage.database import Storage
 from app.storage.repositories import Repos
 
-VENUES: Final = ("PAPER", "FAKE")
+VENUES: Final = ("PAPER", "FAKE", "COINBASE")
 _UTC = timezone.utc  # noqa: UP017
 
 

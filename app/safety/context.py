@@ -119,7 +119,11 @@ class RiskContextBuilder:
                     unknown_orders += 1
                 if finding.code == "BALANCE_MISMATCH":
                     balance_bad = True
-        gate_ok, gate_reason = order_gate(venue, self._settings)
+        gate_ok, gate_reason = order_gate(
+            venue,
+            self._settings,
+            live_armed=venue == "COINBASE" and repos.safety.live_armed(now),
+        )
         duplicate_client = bool(client_order_id) and (
             repos.safety.attempt_by_client_id(str(client_order_id)) is not None
         )

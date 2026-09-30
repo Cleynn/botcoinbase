@@ -79,7 +79,7 @@ def _iso(moment: datetime) -> str:
 
 
 class CoinbasePrivateReader:
-    venue = "LIVE_READ"  # never a trading venue: reads only, and no table accepts this value
+    venue = "COINBASE"  # the venue whose data it reads; it can still only GET
 
     def __init__(
         self,

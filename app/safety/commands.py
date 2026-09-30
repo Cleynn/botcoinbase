@@ -75,7 +75,7 @@ class CommandRunner:
                     for a in repos.safety.attempts_in(("WORKING", "CANCEL_REQUESTED"), venue)
                     if a.exchange_order_id
                 ]
-                for venue in ("FAKE",)
+                for venue in ("FAKE", "COINBASE")
             }
             no_id = sum(
                 1

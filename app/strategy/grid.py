@@ -41,12 +41,13 @@ class CapitalPolicy:
 
     def validate(self) -> None:
         limits = PROFILES.get(self.profile)
-        if limits is None or not (
-            self.total <= limits.allocation_cap
+        within_profile = self.profile == "custom" or (
+            limits is not None
+            and self.total <= limits.allocation_cap
             and self.reserve >= limits.protected_reserve
             and self.cap <= limits.max_deployment
-            and self.cap + self.reserve <= self.total
-        ):
+        )
+        if not (within_profile and self.cap + self.reserve <= self.total):
             raise GridRejected("CAPITAL_POLICY")
 
 

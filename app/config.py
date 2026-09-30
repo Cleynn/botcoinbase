@@ -25,6 +25,7 @@ from pydantic import (
 from app import constants
 from app.capital.profiles import ABSOLUTE_MAX_ORDER, DEFAULT_PROFILE, CapitalProfile
 from app.capital.profiles import PROFILES as CAPITAL_PROFILES
+from app.capital.trading import TradingConfig
 
 DEFAULT_CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 PROFILES = ("backtest", "paper")
@@ -497,24 +498,38 @@ class PairPolicy(BaseModel):
             raise ValueError("only USDC-quoted products are permitted")
         if any(not re.fullmatch(r"[A-Z0-9]+-USDC", p) or len(p) > 24 for p in self.watchlist):
             raise ValueError("watchlist entries must look like BASE-USDC")
-        profile = CAPITAL_PROFILES.get(self.capital_profile)
-        if profile is None:
-            raise ValueError("capital_profile is not a known profile")
-        if self.total_capital > profile.allocation_cap:
-            raise ValueError("total_capital exceeds the hard ceiling")
-        if self.min_reserve < profile.protected_reserve:
-            raise ValueError("min_reserve is below the hard floor")
-        if self.max_deployment > profile.max_deployment:
-            raise ValueError("max_deployment exceeds the hard ceiling")
+        if self.capital_profile != "custom":  # "custom" = a hand-edited trading configuration
+            profile = CAPITAL_PROFILES.get(self.capital_profile)
+            if profile is None:
+                raise ValueError("capital_profile is not a known profile")
+            if self.total_capital > profile.allocation_cap:
+                raise ValueError("total_capital exceeds the hard ceiling")
+            if self.min_reserve < profile.protected_reserve:
+                raise ValueError("min_reserve is below the hard floor")
+            if self.max_deployment > profile.max_deployment:
+                raise ValueError("max_deployment exceeds the hard ceiling")
         if self.max_deployment + self.min_reserve > self.total_capital:
             raise ValueError("reserve plus deployment exceeds total capital")
         if not constants.GRID_MIN_LEVELS <= self.grid_levels <= constants.GRID_MAX_LEVELS:
             raise ValueError("grid_levels outside the allowed range")
-        if self.max_active_pairs != constants.MAX_ACTIVE_PAIRS:
-            raise ValueError("exactly one active pair is permitted")
+        if not 1 <= self.max_active_pairs <= constants.MAX_ACTIVE_PAIRS:
+            raise ValueError("max_active_pairs is outside the allowed range")
         if self.regridding_enabled or self.capital_growth_enabled:
             raise ValueError("regridding and capital growth must stay disabled")
         return self
+
+    def for_trading(self, cfg: TradingConfig) -> PairPolicy:
+        """This policy under a trading configuration: one grid invests `quote_per_grid`."""
+        data = self.model_dump()
+        data.update(
+            capital_profile="custom",
+            total_capital=cfg.allocation_cap,
+            min_reserve=cfg.reserve,
+            max_deployment=cfg.quote_per_grid,
+            grid_levels=cfg.levels_per_grid,
+            max_active_pairs=cfg.max_pairs,
+        )
+        return PairPolicy(**data)
 
     def for_profile(self, profile: CapitalProfile) -> PairPolicy:
         """The same policy under another capital profile (validated afresh, never loosened)."""

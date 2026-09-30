@@ -19,8 +19,8 @@ POLICY_MAX_DEPLOYMENT: Final = Decimal("35")
 # One order never exceeds this notional (35 / 3 levels, rounded up). Config may only lower it.
 POLICY_MAX_ORDER_NOTIONAL: Final = Decimal("12")
 GRID_MIN_LEVELS: Final = 3
-GRID_MAX_LEVELS: Final = 5
-MAX_ACTIVE_PAIRS: Final = 1
+GRID_MAX_LEVELS: Final = 20  # configurable per mode up to this (DEC-026; it was 5)
+MAX_ACTIVE_PAIRS: Final = 10  # configurable per mode up to this (DEC-026; it was 1)
 
 ENVIRONMENTS: Final = ("development", "test", "production")
 PLACEHOLDER_MARKERS: Final = ("CHANGE_ME", "changeme", "placeholder", "example", "REPLACE_ME")

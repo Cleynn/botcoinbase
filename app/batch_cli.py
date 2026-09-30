@@ -257,7 +257,7 @@ def _reconciler(
     reader = reader or build_reader(settings)
     if reader is None:
         return None
-    venue = reader.venue if reader.venue in ("PAPER", "FAKE") else "FAKE"
+    venue = reader.venue if reader.venue in ("PAPER", "FAKE", "COINBASE") else "FAKE"
 
     def sink(operation: str, ok: bool, code: str | None) -> None:
         with storage.tx() as repos:
