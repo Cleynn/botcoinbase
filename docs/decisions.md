@@ -229,6 +229,15 @@ Implemented: pure risk engine, circuit breaker, kill switch, stale data/metadata
 - Not verified: any real Coinbase response (AS-C1, AS-C3, AS-C4), client-id scope, the absence proof against a real exchange, WebSocket connectivity (no client exists), Docker start of any service (no Docker daemon), a paper reconciler. Live trading remains BLOCKED; no independent review.
 - review: SELF
 
+### DEC-023: Phase 8 security-review fixes
+Self-review (security-engineer pass) found one BLOCKER, three HIGH, two MEDIUM issues; all six are fixed in place in migration 0006 (unreleased, so edited rather than superseded; `0006_safety.down.sql` updated to match).
+- B1 web could jam the control clock by writing a future `updated_at`; H1 web could back-date to fake a fresh reconciliation: the database clock `td_now()` is now the only trusted clock. A supplied time is accepted only within 60 s of it (`td_check_time`, on control, decisions, attempts, reconciliation runs). Tests move the clock through an owner-only `td_test_clock` table, empty in every deployment and unreachable by `td_app`/`td_ctl`.
+- H2 restart safety was not DB-enforced: recovery now binds a `boot_id`; `order_attempts` refuses any attempt whose boot id is not the recovered one.
+- H3 reserve/cap/loss/drawdown were Python-only: `td_authorize_order` recomputes them in SQL at the hard ceilings (conservatively) when an attempt is inserted. Python config may only tighten them.
+- M1 freshness and absence were venue-blind: both are per venue. M2 absence proof now needs two OK runs at least 60 s apart after the 120 s window.
+- Still OPEN (not fixed): M3 caller-supplied order book is not independently verified; M4 no scheduler/heartbeat (every host action is operator-driven); M5 no retention policy for safety tables; M6 restrictive web actions depend on audit availability; M7 reconciliation lookback is limited. Lows: VIEWER sees client order ids; FAKE venue legal in the production schema; no per-session phrase throttle; backup docs; the 0006 down-migration destroys safety history. Loss/drawdown SQL limits are not covered by a dedicated regression test.
+- review: SELF. **Still no independent security review.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

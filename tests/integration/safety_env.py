@@ -11,6 +11,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+import psycopg
+
 from app.auth.audit import AuditWriter
 from app.config import Settings
 from app.domain.enums import ActorRole
@@ -80,8 +82,11 @@ class SafetyEnv:
     def recon(self, trigger: str = "MANUAL") -> RunResult:
         return self.reconciler.run(trigger)
 
-    def recover(self) -> RecoveryResult:
-        return self.recovery.run()
+    def recover(self, *, new_process: bool = False) -> RecoveryResult:
+        """Recovery for this process (its fixed boot id), or for a brand-new process."""
+        if new_process:
+            self.boot_id = str(uuid4())
+        return self.recovery.run(self.boot_id)
 
     def act(self, action: str, *, fresh: bool = True, typed: str | None = None) -> Outcome:
         self.reauth.available = fresh
@@ -118,7 +123,7 @@ class SafetyEnv:
 
     # ---------------------------------------------------------------- direct rows (host role)
     def make_intent(
-        self, *, side: str = "BUY", price: str = "100", qty: str = "0.1", key: str | None = None
+        self, *, side: str = "BUY", price: str = "100", qty: str = "0.01", key: str | None = None
     ) -> IntentRow:
         row = IntentRow(
             id=uuid4(),
@@ -197,6 +202,21 @@ class SafetyEnv:
             return repos.safety.attempt(attempt_id)
 
 
+class DbClock:
+    """Moves the database's test clock (owner-only table, empty in every deployment)."""
+
+    def __init__(self, conninfo: str) -> None:
+        self._conninfo = conninfo
+
+    def __call__(self, now: Any) -> None:
+        with psycopg.connect(self._conninfo, autocommit=True) as conn:
+            conn.execute(
+                "INSERT INTO td_test_clock (id, value) VALUES (true, %s) "
+                "ON CONFLICT (id) DO UPDATE SET value = EXCLUDED.value",
+                (now,),
+            )
+
+
 def build_safety_env(
     *,
     settings: Settings,
@@ -205,7 +225,11 @@ def build_safety_env(
     clock: FakeClock,
     admin: Account,
     pair_id: UUID,
+    owner_conninfo: str,
 ) -> SafetyEnv:
+    set_clock = DbClock(owner_conninfo)
+    set_clock(clock.now())
+    clock.hooks.append(set_clock)
     fake = FakeExchange(clock.now)
     sleeps: list[float] = []
     policy = RetryPolicy.from_settings(settings.safety)

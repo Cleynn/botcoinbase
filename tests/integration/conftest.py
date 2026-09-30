@@ -132,6 +132,7 @@ def safe(
     clock: FakeClock,
     coinbase: Any,
     admin: Any,
+    db: Any,
 ) -> Any:
     """An active PAPER pair with SYNTHETIC candles plus the scripted FAKE exchange."""
     from app.domain.pairs import PairAction
@@ -162,4 +163,5 @@ def safe(
         clock=clock,
         admin=admin,
         pair_id=pair_id,
+        owner_conninfo=db.owner_conninfo(),
     )

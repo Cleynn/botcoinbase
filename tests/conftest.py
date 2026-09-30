@@ -47,12 +47,17 @@ _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 class FakeClock:
     def __init__(self) -> None:
         self._now = datetime(2026, 9, 29, 12, 0, 0, tzinfo=UTC)
+        self.hooks: list[
+            Callable[[datetime], None]
+        ] = []  # e.g. keep the database test clock in step
 
     def now(self) -> datetime:
         return self._now
 
     def advance(self, seconds: float) -> None:
         self._now += timedelta(seconds=seconds)
+        for hook in self.hooks:
+            hook(self._now)
 
 
 @dataclass(frozen=True)

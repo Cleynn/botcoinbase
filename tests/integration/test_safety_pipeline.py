@@ -426,7 +426,7 @@ def test_after_a_proven_absence_a_retry_is_a_new_attempt_with_a_new_client_id(
     submitted = safe.attempt(first.attempt_id).submitting_at  # type: ignore[arg-type]
     safe.clock.advance(max((submitted - safe.clock.now()).total_seconds() + 125, 0))
     assert safe.recon().outcome == "OK"
-    safe.clock.advance(5)
+    safe.clock.advance(61)
     assert safe.recon().outcome == "OK"
     assert safe.attempt(first.attempt_id).state == "ABSENT"  # type: ignore[arg-type]
     assert "order.absent" in [r["event_code"] for r in sql("SELECT event_code FROM audit_events")]

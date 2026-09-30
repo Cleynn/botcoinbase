@@ -6,7 +6,7 @@ may write what; this module never decides that."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -311,12 +311,16 @@ class SafetyRepository:
         ).fetchall()
         return [FindingRow(**r) for r in rows]
 
-    def ok_runs_started_after(self, moment: datetime) -> int:
+    def absence_proof(self, moment: datetime, venue: str) -> tuple[int, timedelta]:
+        """(OK runs of this venue started at or after `moment`, time between the first and last)."""
         row = self._conn.execute(
-            "SELECT count(*) AS n FROM reconciliation_runs WHERE outcome = 'OK' AND started_at >= %s",
-            (moment,),
+            "SELECT count(*) AS n, max(started_at) - min(started_at) AS spread "
+            "FROM reconciliation_runs WHERE venue = %s AND outcome = 'OK' AND started_at >= %s",
+            (venue, moment),
         ).fetchone()
-        return int(row["n"]) if row else 0
+        if row is None or not row["n"]:
+            return 0, timedelta(0)
+        return int(row["n"]), row["spread"] or timedelta(0)
 
     def client_id_ever_named(self, client_order_id: str | UUID) -> bool:
         row = self._conn.execute(

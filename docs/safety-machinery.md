@@ -79,6 +79,20 @@ Stale market data, stale metadata, invalid precision, below minimum size/notiona
 | API failures, loss, drawdown, order rate, reject storm | breaker opens once, bot paused | `test_safety_recovery_monitor` |
 | Kill or breaker with a running paper session | paper orders cancelled, session paused, nothing sold | `test_safety_recovery_monitor` |
 
+## Clock, boot id and SQL authorization (DEC-023)
+- `td_now()` is the only trusted clock. Any supplied timestamp must be within 60 s of it, for both roles. Tests move it via the owner-only `td_test_clock` table.
+- Recovery writes a `boot_id`; an attempt carrying any other boot id is refused, so a restarted process cannot authorize orders before it recovers.
+- `td_authorize_order` re-checks order cap, reserve, deployment cap, sell-vs-inventory, loss and drawdown from recorded facts when an attempt is inserted.
+- Reconciliation freshness and absence proof are per venue; absence needs two OK runs at least 60 s apart.
+
+| Fault | Result |
+|---|---|
+| web writes future/back-dated `updated_at` | refused (60 s bound); host actions unaffected |
+| back-dated resume after a stale reconciliation | refused; resume works after a real reconciliation |
+| attempt with foreign or stale boot id | refused |
+| forged ALLOW breaching reserve / deployment cap / inventory | refused by SQL |
+| two back-to-back OK runs | do not prove absence |
+
 ## Commands
 ```
 make safety-status | safety-recover | safety-reconcile | safety-monitor | safety-commands

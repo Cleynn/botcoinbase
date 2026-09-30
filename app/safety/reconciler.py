@@ -45,6 +45,7 @@ from app.storage.repositories import Repos
 from app.storage.safety_repositories import AttemptRow, FillRow, FindingRow, IntentRow
 
 logger = logging.getLogger("app")
+ABSENCE_SPACING: Final = timedelta(seconds=60)  # the two proof runs must be at least this far apart
 LOOKBACK: Final = timedelta(hours=24)
 MARGIN: Final = timedelta(minutes=5)
 TERMINAL_STATES: Final = ("FILLED", "CANCELLED", "EXPIRED", "REJECTED", "ABSENT")
@@ -488,8 +489,8 @@ class Reconciler:
                 continue
             if repos.safety.client_id_ever_named(client_id):
                 continue  # a run once saw this id: absence is not proven
-            proofs = repos.safety.ok_runs_started_after(attempt.submitting_at + window)
-            if proofs >= need:
+            proofs, spread = repos.safety.absence_proof(attempt.submitting_at + window, self._venue)
+            if proofs >= need and spread >= ABSENCE_SPACING:
                 if self._move(repos, attempt, "ABSENT", self._clock.now(), None):
                     done += 1
                     self._record(repos, Evt.ORDER_ABSENT, Res.SUCCESS, attempt.id, reason="PROVEN")

@@ -357,7 +357,7 @@ def test_an_order_that_appears_after_it_was_declared_absent_blocks(safe: SafetyE
     submitted = safe.attempt(first.attempt_id).submitting_at  # type: ignore[arg-type]
     safe.clock.advance(max((submitted - safe.clock.now()).total_seconds() + 125, 0))
     assert safe.recon().outcome == "OK"
-    safe.clock.advance(5)
+    safe.clock.advance(61)
     assert safe.recon().outcome == "OK" and state(safe, first.attempt_id) == "ABSENT"  # type: ignore[arg-type]
     late = safe.attempt(first.attempt_id)  # type: ignore[arg-type]
     from app.exchange.gateway import OrderRequest

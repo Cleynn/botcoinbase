@@ -5,8 +5,10 @@ missing (`None`) is a reason to block, never a reason to allow. The engine retur
 finds, not the first, so an operator sees the full picture. It cannot raise a ceiling: reserve,
 deployment cap and per-order cap come from `app.constants` and config may only tighten them.
 
-Money rules that the database also enforces (reserve, cap) are checked here as well as in SQL:
-this check is an early refusal with a reason, the database CHECKs are the backstop.
+The same money rules (per-order cap, reserve, deployment cap, sell-only, loss and drawdown) are
+recomputed by `td_authorize_order` inside the database at the moment of authorization, at the hard
+ceilings and more conservatively. This check is the early refusal with a reason and the
+configurable, tighter limits; a decision written by the host is never trusted for money rules.
 """
 
 from __future__ import annotations

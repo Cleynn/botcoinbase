@@ -208,15 +208,47 @@ CREATE TABLE control_commands (
 CREATE UNIQUE INDEX control_commands_single_flight ON control_commands ((true)) WHERE state IN ('PENDING', 'RUNNING');
 
 -- ================================================================== guards
-CREATE FUNCTION td_fresh_reconciliation(p_now timestamptz, p_after timestamptz) RETURNS boolean
-    LANGUAGE sql STABLE SET search_path = pg_catalog, public AS
+-- The database clock is the only clock the guards trust. A caller-supplied time is accepted only when
+-- it is within 60 seconds of it, so no role can back-date a reconciliation into looking current or
+-- push a row far into the future to jam later changes. `td_test_clock` exists so tests can move the
+-- clock; it is empty in every deployment, and no application role has any privilege on it.
+CREATE TABLE td_test_clock (
+    id    boolean     PRIMARY KEY DEFAULT true CHECK (id),
+    value timestamptz NOT NULL
+);
+REVOKE ALL ON td_test_clock FROM PUBLIC;
+
+CREATE FUNCTION td_now() RETURNS timestamptz
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS
 $fn$
-    -- The newest run overall must be OK, finished within 300 s before p_now, and (when p_after is
-    -- given) finished after it. A newer failed run cancels an older good one.
-    SELECT COALESCE((
-        SELECT outcome = 'OK' AND finished_at <= p_now AND finished_at >= p_now - interval '300 seconds'
-               AND (p_after IS NULL OR finished_at > p_after)
-        FROM reconciliation_runs ORDER BY seq DESC LIMIT 1), false)
+    SELECT COALESCE((SELECT value FROM td_test_clock WHERE id), clock_timestamp())
+$fn$;
+
+CREATE FUNCTION td_check_time(p_ts timestamptz) RETURNS void
+    LANGUAGE plpgsql STABLE SET search_path = pg_catalog, public AS
+$fn$
+BEGIN
+    IF abs(extract(epoch FROM (p_ts - td_now()))) > 60 THEN
+        RAISE EXCEPTION 'a supplied time must be within 60 seconds of the database clock'
+            USING ERRCODE = 'integrity_constraint_violation';
+    END IF;
+END
+$fn$;
+
+-- Is the newest reconciliation of `p_venue` (or of EVERY venue that has a recorded baseline when
+-- p_venue is NULL) OK, finished within 300 s before p_now, and finished after p_after? A newer
+-- failed run cancels an older good one; one venue's run never vouches for another; no baseline at
+-- all means nothing has ever been reconcilable, so the answer is no.
+CREATE FUNCTION td_fresh_reconciliation(p_now timestamptz, p_after timestamptz, p_venue text DEFAULT NULL)
+    RETURNS boolean LANGUAGE sql STABLE SET search_path = pg_catalog, public AS
+$fn$
+    SELECT EXISTS (SELECT 1 FROM venue_baselines WHERE p_venue IS NULL OR venue = p_venue)
+       AND NOT EXISTS (
+        SELECT 1 FROM (SELECT DISTINCT venue FROM venue_baselines WHERE p_venue IS NULL OR venue = p_venue) v
+        WHERE NOT COALESCE((
+            SELECT r.outcome = 'OK' AND r.finished_at <= p_now AND r.finished_at >= p_now - interval '300 seconds'
+                   AND (p_after IS NULL OR r.finished_at > p_after)
+            FROM reconciliation_runs r WHERE r.venue = v.venue ORDER BY r.seq DESC LIMIT 1), false))
 $fn$;
 
 CREATE FUNCTION bot_control_guard() RETURNS trigger
@@ -227,6 +259,7 @@ DECLARE
     is_pause boolean; is_resume boolean; kill_on boolean; kill_off boolean;
     tripped boolean; brk_close boolean; rec_reset boolean; rec_done boolean;
     unknowns integer;
+    p_now timestamptz := td_now();
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'bot control is never deleted' USING ERRCODE = 'integrity_constraint_violation';
@@ -234,6 +267,7 @@ BEGIN
     IF actor IS NULL THEN
         RAISE EXCEPTION 'unknown database role for bot control' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
+    PERFORM td_check_time(NEW.updated_at);
     IF NEW.id <> OLD.id OR NEW.version <> OLD.version + 1 OR NEW.updated_at < OLD.updated_at THEN
         RAISE EXCEPTION 'bot control changes advance the version by one and never go back in time'
             USING ERRCODE = 'integrity_constraint_violation';
@@ -286,7 +320,7 @@ BEGIN
     END IF;
 
     IF rec_done THEN
-        IF NOT td_fresh_reconciliation(NEW.updated_at, NULL) THEN
+        IF NOT td_fresh_reconciliation(p_now, NULL) THEN
             RAISE EXCEPTION 'recovery completes only after a current successful reconciliation' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
         IF NEW.recovery_completed_at IS NULL THEN
@@ -299,10 +333,10 @@ BEGIN
            OR NEW.breaker_state <> 'CLOSED' THEN
             RAISE EXCEPTION 'resume needs kill switch inactive, breaker closed and recovery complete' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
-        IF OLD.breaker_state = 'OPEN' AND OLD.breaker_cooldown_until > NEW.updated_at THEN
+        IF OLD.breaker_state = 'OPEN' AND OLD.breaker_cooldown_until > p_now THEN
             RAISE EXCEPTION 'the breaker cooldown has not elapsed' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
-        IF NOT td_fresh_reconciliation(NEW.updated_at, CASE WHEN OLD.breaker_state = 'OPEN' THEN OLD.breaker_opened_at END) THEN
+        IF NOT td_fresh_reconciliation(p_now, CASE WHEN OLD.breaker_state = 'OPEN' THEN OLD.breaker_opened_at END) THEN
             RAISE EXCEPTION 'resume needs a current successful reconciliation' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
         SELECT count(*) INTO unknowns FROM order_attempts WHERE state = 'UNKNOWN';
@@ -381,6 +415,7 @@ BEGIN
         RAISE EXCEPTION 'risk decisions are written by the host only' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
     IF TG_OP = 'INSERT' THEN
+        PERFORM td_check_time(NEW.decided_at);
         IF NEW.consumed_at IS NOT NULL THEN
             RAISE EXCEPTION 'a new decision is not consumed' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
@@ -401,6 +436,115 @@ CREATE TRIGGER risk_decisions_guard BEFORE INSERT OR UPDATE OR DELETE ON risk_de
 CREATE TRIGGER risk_decisions_no_truncate BEFORE TRUNCATE ON risk_decisions
     FOR EACH STATEMENT EXECUTE FUNCTION td_append_only();
 
+
+-- The money rules, recomputed from recorded facts inside the database (BI-13). The host process
+-- cannot talk its way past them by writing an ALLOW: this runs at the moment of authorization. It
+-- enforces the hard ceilings only (config may tighten them in the application, never loosen them),
+-- and is deliberately conservative: inventory is valued at its highest buy price, which can only
+-- overstate deployment. Returns NULL when the order may be authorized, else a fixed reason code.
+CREATE FUNCTION td_authorize_order(p_intent uuid, p_now timestamptz) RETURNS text
+    LANGUAGE plpgsql STABLE SET search_path = pg_catalog, public AS
+$fn$
+DECLARE
+    i order_intents%ROWTYPE;
+    baseline numeric;
+    cash numeric;
+    reserved_buys numeric;
+    reserved_sell_qty numeric;
+    inv_cost_ub numeric;
+    inv_qty numeric;
+    notional numeric;
+    outlay numeric;
+    cur_eq numeric;
+    peak numeric;
+    day_open numeric;
+    day_start timestamptz := date_trunc('day', p_now AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+BEGIN
+    SELECT * INTO i FROM order_intents WHERE id = p_intent;
+    IF NOT FOUND THEN
+        RETURN 'INTENT_MISSING';
+    END IF;
+    SELECT amount INTO baseline FROM venue_baselines WHERE venue = i.venue AND currency = 'USDC';
+    IF baseline IS NULL THEN
+        RETURN 'NO_BASELINE';
+    END IF;
+    notional := i.price * i.base_qty;
+    IF notional > 12 THEN
+        RETURN 'ORDER_CAP_BREACH';
+    END IF;
+
+    SELECT baseline + COALESCE(sum(CASE f.side WHEN 'BUY' THEN -(f.price * f.size + f.fee)
+                                                ELSE f.price * f.size - f.fee END), 0)
+        INTO cash FROM attempt_fills f WHERE f.venue = i.venue;
+
+    SELECT COALESCE(sum(CASE WHEN oi.side = 'BUY' THEN GREATEST(oi.base_qty - a.filled_qty, 0) * oi.price END), 0),
+           COALESCE(sum(CASE WHEN oi.side = 'SELL' AND oi.product_id = i.product_id
+                             THEN GREATEST(oi.base_qty - a.filled_qty, 0) END), 0)
+        INTO reserved_buys, reserved_sell_qty
+        FROM order_attempts a JOIN order_intents oi ON oi.id = a.intent_id
+        WHERE oi.venue = i.venue
+          AND a.state IN ('AUTHORIZED', 'SUBMITTING', 'WORKING', 'CANCEL_REQUESTED', 'UNKNOWN');
+
+    WITH pos AS (
+        SELECT oi.product_id,
+               sum(CASE f.side WHEN 'BUY' THEN f.size ELSE -f.size END) AS qty,
+               max(CASE WHEN f.side = 'BUY' THEN f.price END) AS max_buy
+        FROM attempt_fills f
+        JOIN order_attempts a ON a.id = f.attempt_id
+        JOIN order_intents oi ON oi.id = a.intent_id
+        WHERE f.venue = i.venue GROUP BY oi.product_id)
+    SELECT COALESCE(sum(GREATEST(qty, 0) * COALESCE(max_buy, 0)), 0),
+           COALESCE(max(CASE WHEN product_id = i.product_id THEN GREATEST(qty, 0) END), 0)
+        INTO inv_cost_ub, inv_qty FROM pos;
+
+    IF i.side = 'BUY' THEN
+        outlay := notional * 1.006;  -- the stress maker fee (0.60%)
+        IF cash - reserved_buys - outlay < 15 THEN
+            RETURN 'RESERVE_BREACH';
+        END IF;
+        IF reserved_buys + inv_cost_ub + notional > 35 THEN
+            RETURN 'DEPLOYMENT_CAP_BREACH';
+        END IF;
+    ELSIF i.base_qty > inv_qty - reserved_sell_qty THEN
+        RETURN 'SELL_EXCEEDS_INVENTORY';
+    END IF;
+
+    -- equity is sampled at each recorded fill, marking every held product at its latest fill price
+    WITH f AS (
+        SELECT fl.id, fl.occurred_at, fl.side, fl.price, fl.size, fl.fee, oi.product_id
+        FROM attempt_fills fl
+        JOIN order_attempts a ON a.id = fl.attempt_id
+        JOIN order_intents oi ON oi.id = a.intent_id
+        WHERE fl.venue = i.venue),
+    pts AS (
+        SELECT f1.id, f1.occurred_at,
+               baseline
+               + (SELECT COALESCE(sum(CASE f2.side WHEN 'BUY' THEN -(f2.price * f2.size + f2.fee)
+                                                  ELSE f2.price * f2.size - f2.fee END), 0)
+                    FROM f f2 WHERE (f2.occurred_at, f2.id) <= (f1.occurred_at, f1.id))
+               + (SELECT COALESCE(sum(q.qty * q.mark), 0) FROM (
+                      SELECT f3.product_id,
+                             sum(CASE f3.side WHEN 'BUY' THEN f3.size ELSE -f3.size END) AS qty,
+                             (array_agg(f3.price ORDER BY f3.occurred_at DESC, f3.id DESC))[1] AS mark
+                      FROM f f3 WHERE (f3.occurred_at, f3.id) <= (f1.occurred_at, f1.id)
+                      GROUP BY f3.product_id) q WHERE q.qty > 0) AS equity
+        FROM f f1)
+    SELECT (SELECT equity FROM pts ORDER BY occurred_at DESC, id DESC LIMIT 1),
+           GREATEST(baseline, COALESCE((SELECT max(equity) FROM pts), baseline)),
+           COALESCE((SELECT equity FROM pts WHERE occurred_at < day_start
+                     ORDER BY occurred_at DESC, id DESC LIMIT 1), baseline)
+        INTO cur_eq, peak, day_open;
+    cur_eq := COALESCE(cur_eq, baseline);
+    IF day_open - cur_eq >= 10 THEN
+        RETURN 'LOSS_LIMIT';
+    END IF;
+    IF peak > 0 AND (peak - cur_eq) / peak >= 0.20 THEN
+        RETURN 'DRAWDOWN_LIMIT';
+    END IF;
+    RETURN NULL;
+END
+$fn$;
+
 -- An attempt is authorized only here: the hot guards are read from base tables at this moment,
 -- the decision is checked and consumed, and the client id must not be reused.
 CREATE FUNCTION order_attempt_guard() RETURNS trigger
@@ -412,6 +556,10 @@ DECLARE
     prev integer;
     bad integer;
     proofs integer;
+    spread interval;
+    refusal text;
+    p_now timestamptz := td_now();
+    venue_ text;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'order attempts are never deleted' USING ERRCODE = 'integrity_constraint_violation';
@@ -428,7 +576,13 @@ BEGIN
            OR ctl.recovery_state <> 'COMPLETE' THEN
             RAISE EXCEPTION 'orders are not authorized while the bot is not RUNNING and clear' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
-        IF NOT td_fresh_reconciliation(NEW.created_at, NULL) THEN
+        PERFORM td_check_time(NEW.created_at);
+        IF ctl.boot_id IS NULL OR NEW.boot_id <> ctl.boot_id THEN
+            RAISE EXCEPTION 'an attempt must carry the boot id of the recovery that started this process'
+                USING ERRCODE = 'integrity_constraint_violation';
+        END IF;
+        SELECT venue INTO venue_ FROM order_intents WHERE id = NEW.intent_id;
+        IF NOT td_fresh_reconciliation(p_now, NULL, venue_) THEN
             RAISE EXCEPTION 'orders need a current successful reconciliation' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
         IF EXISTS (SELECT 1 FROM order_attempts WHERE state = 'UNKNOWN') THEN
@@ -436,7 +590,7 @@ BEGIN
         END IF;
         SELECT * INTO dec FROM risk_decisions WHERE id = NEW.decision_id FOR UPDATE;
         IF NOT FOUND OR dec.decision <> 'ALLOW' OR dec.intent_id <> NEW.intent_id OR dec.consumed_at IS NOT NULL
-           OR dec.expires_at < NEW.created_at OR dec.decided_at > NEW.created_at THEN
+           OR dec.expires_at < p_now OR dec.decided_at > p_now + interval '60 seconds' THEN
             RAISE EXCEPTION 'no valid unconsumed ALLOW decision for this attempt' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
         SELECT count(*), count(*) FILTER (WHERE state NOT IN ('ABSENT', 'REJECTED'))
@@ -446,6 +600,10 @@ BEGIN
         END IF;
         IF NEW.attempt_no <> prev + 1 THEN
             RAISE EXCEPTION 'attempt numbers are consecutive' USING ERRCODE = 'integrity_constraint_violation';
+        END IF;
+        refusal := td_authorize_order(NEW.intent_id, p_now);
+        IF refusal IS NOT NULL THEN
+            RAISE EXCEPTION 'order refused by the database: %', refusal USING ERRCODE = 'integrity_constraint_violation';
         END IF;
         UPDATE risk_decisions SET consumed_at = NEW.created_at WHERE id = NEW.decision_id AND consumed_at IS NULL;
         RETURN NEW;
@@ -488,17 +646,24 @@ BEGIN
     IF NEW.state = 'SUBMITTING' AND NEW.submitting_at IS NULL THEN
         RAISE EXCEPTION 'the submit mark is committed before any I/O' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
+    IF NEW.state = 'SUBMITTING' THEN
+        PERFORM td_check_time(NEW.submitting_at);
+    END IF;
     IF OLD.state = 'AUTHORIZED' AND NEW.state = 'REJECTED' AND NEW.failure_code <> 'NOT_SENT' THEN
         RAISE EXCEPTION 'an attempt that was never sent is closed as NOT_SENT' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
     IF NEW.state = 'ABSENT' THEN
-        -- absence proof (conservative, unverified against a real exchange): two OK reconciliations
-        -- that STARTED at least 120 s after the submit mark, and neither ever saw this client id
-        SELECT count(*) INTO proofs FROM reconciliation_runs r
-            WHERE r.outcome = 'OK' AND r.started_at >= OLD.submitting_at + interval '120 seconds'
-              AND r.finished_at <= NEW.updated_at;
-        IF proofs < 2 THEN
-            RAISE EXCEPTION 'absence needs two successful reconciliations after the wait window' USING ERRCODE = 'integrity_constraint_violation';
+        -- absence proof (conservative, unverified against a real exchange): two OK reconciliations OF THIS
+        -- VENUE that STARTED at least 120 s after the submit mark and at least 60 s apart, and no run
+        -- ever named this client id
+        SELECT venue INTO venue_ FROM order_intents WHERE id = OLD.intent_id;
+        SELECT count(*), max(r.started_at) - min(r.started_at) INTO proofs, spread
+            FROM reconciliation_runs r
+            WHERE r.venue = venue_ AND r.outcome = 'OK'
+              AND r.started_at >= OLD.submitting_at + interval '120 seconds'
+              AND r.finished_at <= p_now;
+        IF proofs < 2 OR spread < interval '60 seconds' THEN
+            RAISE EXCEPTION 'absence needs two successful reconciliations, 60 seconds apart, after the wait window' USING ERRCODE = 'integrity_constraint_violation';
         END IF;
         IF EXISTS (SELECT 1 FROM reconciliation_findings f WHERE f.subject = OLD.client_order_id::text) THEN
             RAISE EXCEPTION 'an order with this client id was seen; absence is not proven' USING ERRCODE = 'integrity_constraint_violation';
@@ -511,6 +676,20 @@ CREATE TRIGGER order_attempts_guard BEFORE INSERT OR UPDATE OR DELETE ON order_a
     FOR EACH ROW EXECUTE FUNCTION order_attempt_guard();
 CREATE TRIGGER order_attempts_no_truncate BEFORE TRUNCATE ON order_attempts
     FOR EACH STATEMENT EXECUTE FUNCTION td_append_only();
+
+CREATE FUNCTION reconciliation_run_guard() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, public AS
+$fn$
+BEGIN
+    PERFORM td_check_time(NEW.finished_at);
+    IF NEW.started_at > NEW.finished_at OR NEW.started_at < NEW.finished_at - interval '1 hour' THEN
+        RAISE EXCEPTION 'a reconciliation run lasts at most one hour' USING ERRCODE = 'integrity_constraint_violation';
+    END IF;
+    RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER reconciliation_runs_time_guard BEFORE INSERT ON reconciliation_runs
+    FOR EACH ROW EXECUTE FUNCTION reconciliation_run_guard();
 
 -- Intents, reconciliation records, fills, hints, baselines: host-written and immutable.
 DO $do$

@@ -646,7 +646,7 @@ def _ok_runs_after(safe: SafetyEnv, attempt: Any, n: int) -> None:
     safe.clock.advance(max(wait, 0))
     for _ in range(n):
         assert safe.recon().outcome == "OK"
-        safe.clock.advance(1)
+        safe.clock.advance(61)
 
 
 def test_absence_needs_two_ok_reconciliations_after_the_wait_window(
@@ -756,24 +756,24 @@ def test_reconciliation_and_fill_rows_are_written_by_the_host_only(
     run(
         db,
         "td_ctl",
-        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome) VALUES (gen_random_uuid(), 'FAKE', 'MANUAL', now(), now(), 'OK')",
+        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome) VALUES (gen_random_uuid(), 'FAKE', 'MANUAL', td_now(), td_now(), 'OK')",
     )
     refuse(
         db,
         "td_ctl",
-        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome, findings_count) VALUES (gen_random_uuid(), 'FAKE', 'MANUAL', now(), now(), 'OK', 1)",
+        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome, findings_count) VALUES (gen_random_uuid(), 'FAKE', 'MANUAL', td_now(), td_now(), 'OK', 1)",
         exc=VIOLATION,
     )
     refuse(
         db,
         "td_ctl",
-        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome) VALUES (gen_random_uuid(), 'FAKE', 'MANUAL', now(), now(), 'FAILED')",
+        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome) VALUES (gen_random_uuid(), 'FAKE', 'MANUAL', td_now(), td_now(), 'FAILED')",
         exc=VIOLATION,
     )
     refuse(
         db,
         "td_ctl",
-        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome) VALUES (gen_random_uuid(), 'LIVE', 'MANUAL', now(), now(), 'OK')",
+        "INSERT INTO reconciliation_runs (id, venue, trigger, started_at, finished_at, outcome) VALUES (gen_random_uuid(), 'LIVE', 'MANUAL', td_now(), td_now(), 'OK')",
         exc=VIOLATION,
     )
 

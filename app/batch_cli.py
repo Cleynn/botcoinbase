@@ -307,11 +307,12 @@ def _safety(
         return 0
     if args.command in ("recover", "reconcile"):
         reconciler = _reconciler(settings, storage, clock, reader)
-        if reconciler is None and args.command == "reconcile":
-            out("NO_EXCHANGE_READER: no exchange reader exists in this deployment; nothing to do")
-            return 1
         if args.command == "reconcile":
-            assert reconciler is not None  # noqa: S101
+            if reconciler is None:
+                out(
+                    "NO_EXCHANGE_READER: no exchange reader exists in this deployment; nothing to do"
+                )
+                return 1
             run_result = reconciler.run("MANUAL")
             out(
                 f"reconciliation {run_result.outcome} "

@@ -50,7 +50,7 @@ def test_recovery_reconciles_first_and_never_resumes(safe: SafetyEnv, sql: Sql) 
 def test_every_start_takes_a_new_boot_id_and_pauses_a_running_bot(safe: SafetyEnv) -> None:
     safe.running()
     first = safe.control_row().boot_id
-    result = safe.recover()
+    result = safe.recover(new_process=True)
     row = safe.control_row()
     assert row.boot_id != first and row.boot_id == result.boot_id
     assert result.complete and row.bot_state == "PAUSED"  # a restart never leaves the bot RUNNING

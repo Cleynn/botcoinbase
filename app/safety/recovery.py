@@ -61,8 +61,11 @@ class RecoveryService:
             detail=detail,
         )
 
-    def run(self) -> RecoveryResult:
-        boot_id = str(uuid4())
+    def run(self, boot_id: str | None = None) -> RecoveryResult:
+        """Recover this process. `boot_id` is the identity the process will then submit with: the
+        database refuses an attempt whose boot id is not the one recorded here, so a process
+        that did not run recovery (or was superseded by a newer one) cannot authorize orders."""
+        boot_id = boot_id or str(uuid4())
         now = self._clock.now()
         with self._storage.tx() as repos:
             control = repos.safety.control(for_update=True)
@@ -74,7 +77,9 @@ class RecoveryService:
                 changes.update(
                     bot_state="PAUSED", recovery_state="INCOMPLETE", recovery_completed_at=None
                 )
-            repos.safety.update_control(control.version, now, **changes)
+            repeat = control.boot_id == boot_id and len(changes) == 2  # the same start again
+            if not repeat:
+                repos.safety.update_control(control.version, now, **changes)
             closed = unknown = 0
             for venue in ("PAPER", "FAKE"):
                 for attempt in repos.safety.attempts_in(("AUTHORIZED", "SUBMITTING"), venue):
