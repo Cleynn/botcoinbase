@@ -52,8 +52,15 @@ def seed_real_content(review: ReviewEnv, mkt: Market, sql: Sql, storage: Any) ->
     body = json.dumps({"kind": "BACKTEST", "note": hostile})
     sql(
         "INSERT INTO reports (id, kind, mode_label, title, body_json, body_md, sha256, created_at) "
-        "VALUES (%s, 'BACKTEST', 'BACKTEST', %s, %s, %s, %s, now())",
-        (uuid4(), hostile[:120], body, hostile, hashlib.sha256(body.encode()).hexdigest()),
+        "VALUES (%s, 'BACKTEST', 'BACKTEST', %s, %s, %s, %s, %s)",
+        (
+            uuid4(),
+            hostile[:120],
+            body,
+            hostile,
+            hashlib.sha256(body.encode()).hexdigest(),
+            mkt.clock.now(),  # the fake clock, not the database clock: the period is fixed
+        ),
     )
     with storage.tx() as repos:  # hostile audit content in every free-text column
         AuditWriter(mkt.clock).record(
