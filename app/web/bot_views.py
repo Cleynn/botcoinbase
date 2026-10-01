@@ -8,7 +8,14 @@ from datetime import datetime
 from typing import Final
 
 from app.capital.profiles import PROFILES
-from app.safety.control import MODE_PHRASES, PHRASES, PROFILE_PHRASES, Overview
+from app.capital.trading import TradingConfig
+from app.safety.control import (
+    CONFIG_PHRASES,
+    MODE_PHRASES,
+    PHRASES,
+    PROFILE_PHRASES,
+    Overview,
+)
 from app.safety.live_gate import BLOCKERS, STATUS_TEXT
 from app.safety.types import BLOCK_REASONS
 from app.storage.repositories import Repos
@@ -45,6 +52,13 @@ REASON_TEXT: Final[dict[str, str]] = {
     "PROFILE": "that capital profile does not exist",
     "PROFILE_NOT_APPROVED": "only the pilot profile is approved in production",
     "MODE": "that mode does not exist",
+    "MAX_PAIRS": "the number of pairs must be between 1 and 10",
+    "LEVELS": "grid lines must be between 3 and 20",
+    "AMOUNTS": "amounts must be zero or positive numbers",
+    "GRIDS_EXCEED_INVESTED_CAP": "pairs times the amount per grid exceeds the invested cap",
+    "ORDER_EXCEEDS_GRID": "the per-order cap exceeds the amount per grid",
+    "RESERVE_BELOW_FLOOR": "the reserve must be at least 20% of invested plus reserve",
+    "CONFIG_UNCHANGED": "those numbers are already in force",
     "MODE_UNCHANGED": "that mode is already selected",
     "PAPER_NOT_IDLE": "the paper session must be PAUSED with no open paper orders",
 }
@@ -99,6 +113,11 @@ MESSAGES: Final[dict[str, tuple[str, str]]] = {
     "phrase_mismatch": ("error", "The confirmation phrase did not match exactly."),
     "invalid": ("error", "The request was invalid."),
     "profile_paper": ("success", "The PAPER capital profile was updated."),
+    "config_paper": ("success", "The PAPER trading configuration was updated."),
+    "config_live": (
+        "success",
+        "The LIVE trading configuration was updated. Any live arming ended: arm again.",
+    ),
     "mode_backtest": (
         "success",
         "Mode set to BACKTEST. Nothing was started and no order was placed.",
@@ -157,6 +176,7 @@ class BotView:
     live_armed: bool = False
     mode_buttons: tuple[tuple[str, str, bool], ...] = ()  # slug, label, selected
     mode_changeable: bool = False
+    trading_rows: tuple[tuple[str, int, int, str, str, str, str, int], ...] = ()
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -245,6 +265,19 @@ def build_bot(o: Overview, *, can_manage: bool, message: str | None) -> BotView:
             (slug, label, slug.upper() == o.trading_mode) for slug, label in MODE_LABELS.items()
         ),
         mode_changeable=can_manage and c.bot_state == "PAUSED",
+        trading_rows=tuple(
+            (
+                t.mode.lower(),
+                t.max_pairs,
+                t.levels_per_grid,
+                str(t.quote_per_grid),
+                str(t.invested_cap),
+                str(t.reserve),
+                str(t.per_order_cap),
+                t.version,
+            )
+            for t in o.trading
+        ),
     )
 
 
@@ -369,6 +402,94 @@ def mode_confirm(
         reauth_active,
         kind,
         text,
+    )
+
+
+@dataclass(frozen=True)
+class TradingEditView:
+    mode: str
+    action: str  # where the form goes (a GET that shows the confirmation step)
+    values: tuple[tuple[str, str, str, str], ...]  # field name, label, current value, hint
+    message_kind: str | None
+    message_text: str | None
+
+
+EDIT_FIELDS: Final = (
+    ("pairs", "Pairs traded in parallel (1 to 10)", "How many pairs may have an active grid."),
+    ("levels", "Grid lines per grid (3 to 20)", "A grid of N lines has N-1 buy/sell cells."),
+    ("per_grid", "USDC invested per grid", "Per pair. Pairs times this stays within the cap."),
+    ("invested", "Total invested cap (USDC)", "The most committed across every grid."),
+    ("reserve", "Reserve never invested (USDC)", "At least 20% of invested plus reserve."),
+    ("per_order", "Largest single order (USDC)", "Each order, buy or sell, stays below this."),
+)
+
+
+def trading_edit(mode: str, cfg: TradingConfig, error: str | None = None) -> TradingEditView:
+    current = {
+        "pairs": str(cfg.max_pairs),
+        "levels": str(cfg.levels_per_grid),
+        "per_grid": str(cfg.quote_per_grid),
+        "invested": str(cfg.invested_cap),
+        "reserve": str(cfg.reserve),
+        "per_order": str(cfg.per_order_cap),
+    }
+    kind, text = ("error", f"Refused: {reason_text(error)}.") if error else (None, None)
+    return TradingEditView(
+        mode,
+        f"/bot/trading/{mode}/request",
+        tuple((name, label, current[name], hint) for name, label, hint in EDIT_FIELDS),
+        kind,
+        text,
+    )
+
+
+def trading_confirm(
+    mode: str,
+    current: TradingConfig,
+    proposed: TradingConfig,
+    *,
+    reauth_active: bool,
+    message: str | None,
+    error: str | None = None,
+) -> ConfirmView:
+    kind, text = flash(message)
+    if error:
+        kind, text = "error", f"Refused: {reason_text(error)}."
+    rows = (
+        ("pairs", current.max_pairs, proposed.max_pairs),
+        ("grid lines", current.levels_per_grid, proposed.levels_per_grid),
+        ("USDC per grid", current.quote_per_grid, proposed.quote_per_grid),
+        ("invested cap", current.invested_cap, proposed.invested_cap),
+        ("reserve", current.reserve, proposed.reserve),
+        ("largest order", current.per_order_cap, proposed.per_order_cap),
+    )
+    lines = tuple(f"{name}: {old} -> {new}" for name, old, new in rows)
+    extra = (
+        "Nothing is placed or changed on the exchange. The bot must be PAUSED.",
+        "Changing the LIVE numbers ends any live arming: arm again afterwards."
+        if mode == "live"
+        else "The paper session must be PAUSED with no open paper order.",
+        "The bot never invests the reserve and never exceeds these caps, "
+        "whatever the number of pairs.",
+    )
+    return ConfirmView(
+        f"Update trading configuration for {mode.upper()} mode",
+        NOTICE,
+        (*lines, *extra),
+        (),
+        f"/bot/trading/{mode}",
+        CONFIG_PHRASES[mode],
+        reauth_active,
+        kind,
+        text,
+        (
+            ("pairs", str(proposed.max_pairs)),
+            ("levels", str(proposed.levels_per_grid)),
+            ("per_grid", str(proposed.quote_per_grid)),
+            ("invested", str(proposed.invested_cap)),
+            ("reserve", str(proposed.reserve)),
+            ("per_order", str(proposed.per_order_cap)),
+        ),
     )
 
 

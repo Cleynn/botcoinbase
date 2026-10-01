@@ -42,7 +42,7 @@ def test_only_the_importer_and_the_runners_use_the_public_client() -> None:
         ).items()
         if any(m.startswith("app.adapters.coinbase_public") for m in imports_of(s))
     }
-    assert users == {"market/ingest.py", "pairs/runner.py", "pairs/cli.py"}
+    assert users == {"market/ingest.py", "pairs/runner.py", "pairs/cli.py", "live/cli.py"}
 
 
 def test_the_web_tier_never_imports_market_paper_backtest_or_strategy_code() -> None:

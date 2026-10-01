@@ -7,6 +7,7 @@ confirmation -> audit -> internal command -> outcome audit (see `app.safety.cont
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -16,10 +17,13 @@ from app.api.dependencies import get_services, request_id, require_permission, r
 from app.api.schemas import (
     BotProfileConfirm,
     BotProfileReauth,
+    BotTradingConfirm,
+    BotTradingReauth,
     ReviewPlainConfirm,
     ReviewPlainReauth,
 )
 from app.capital.profiles import PROFILES
+from app.capital.trading import TradingConfig, problems
 from app.domain.enums import ActorRole
 from app.domain.models import AuditActor, AuthContext
 from app.domain.pairs import ActorClass
@@ -208,6 +212,135 @@ def mode_confirm(
         request,
         ctx,
         mode,
+        None,
+        _STATUS.get(outcome.kind, 409),
+        error=outcome.reasons[0] if outcome.reasons else "GUARD_REFUSED",
+    )
+
+
+# ---------------------------------------------------------------- trading configuration (edit)
+_AMOUNT_Q = Query(pattern=r"^[0-9]{1,9}(\.[0-9]{1,8})?$")
+
+
+def _proposed(
+    mode: str,
+    pairs: int,
+    levels: int,
+    per_grid: str,
+    invested: str,
+    reserve: str,
+    per_order: str,
+) -> TradingConfig:
+    return TradingConfig(
+        mode.upper(),
+        pairs,
+        levels,
+        Decimal(per_grid),
+        Decimal(invested),
+        Decimal(reserve),
+        Decimal(per_order),
+    )
+
+
+def _trading_page(
+    request: Request,
+    ctx: AuthContext,
+    mode: str,
+    proposed: TradingConfig,
+    message: str | None,
+    status: int = 200,
+    error: str | None = None,
+) -> Response:
+    services = get_services(request)
+    view = views.trading_confirm(
+        mode,
+        services.bot.trading_config(mode),
+        proposed,
+        reauth_active=services.bot.reauth_active(ctx),
+        message=message,
+        error=error,
+    )
+    return services.renderer.html("bot_confirm.html", status, auth=ctx, active="bot", view=view)
+
+
+@router.get("/bot/trading/{mode}/edit")
+def trading_edit(
+    request: Request,
+    mode: Mode,
+    ctx: Annotated[AuthContext, Depends(_admin)],
+    err: Annotated[str | None, Query(pattern=r"^[A-Z_]{3,40}$")] = None,
+) -> Response:
+    services = get_services(request)
+    view = views.trading_edit(mode, services.bot.trading_config(mode), err)
+    return services.renderer.html("bot_trading_edit.html", auth=ctx, active="bot", view=view)
+
+
+@router.get("/bot/trading/{mode}/request")
+def trading_request(
+    request: Request,
+    mode: Mode,
+    pairs: Annotated[int, Query(ge=1, le=10)],
+    levels: Annotated[int, Query(ge=3, le=20)],
+    per_grid: Annotated[str, _AMOUNT_Q],
+    invested: Annotated[str, _AMOUNT_Q],
+    reserve: Annotated[str, _AMOUNT_Q],
+    per_order: Annotated[str, _AMOUNT_Q],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+    msg: Annotated[str | None, Query(max_length=32)] = None,
+) -> Response:
+    proposed = _proposed(mode, pairs, levels, per_grid, invested, reserve, per_order)
+    bad = problems(proposed)
+    if bad:  # shown on the form, nothing is spent
+        return RedirectResponse(f"/bot/trading/{mode}/edit?err={bad[0]}", status_code=303)
+    return _trading_page(request, ctx, mode, proposed, msg)
+
+
+def _query(mode: str, form: BotTradingReauth | BotTradingConfirm) -> str:
+    return (
+        f"/bot/trading/{mode}/request?pairs={form.pairs}&levels={form.levels}"
+        f"&per_grid={form.per_grid}&invested={form.invested}&reserve={form.reserve}"
+        f"&per_order={form.per_order}"
+    )
+
+
+@router.post("/bot/trading/{mode}/reauth")
+def trading_reauth(
+    request: Request,
+    mode: Mode,
+    form: Annotated[BotTradingReauth, Form()],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+) -> Response:
+    code = _reauth(request, ctx, form.password)
+    if code == "reauth_ok":
+        return RedirectResponse(f"{_query(mode, form)}&msg={code}", status_code=303)
+    proposed = _proposed(
+        mode, form.pairs, form.levels, form.per_grid, form.invested, form.reserve, form.per_order
+    )
+    return _trading_page(request, ctx, mode, proposed, code, 429 if code == "throttled" else 400)
+
+
+@router.post("/bot/trading/{mode}/confirm")
+def trading_confirm(
+    request: Request,
+    mode: Mode,
+    form: Annotated[BotTradingConfirm, Form()],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+) -> Response:
+    proposed = _proposed(
+        mode, form.pairs, form.levels, form.per_grid, form.invested, form.reserve, form.per_order
+    )
+    outcome: Outcome = get_services(request).bot.set_trading_config(
+        ctx, _actor(request, ctx), mode, proposed, form.confirmation
+    )
+    if outcome.kind == "ok":
+        return RedirectResponse(f"/bot?msg=config_{mode}", status_code=303)
+    if outcome.kind in ("phrase_mismatch", "reauth_required"):
+        return _trading_page(request, ctx, mode, proposed, outcome.kind, _STATUS[outcome.kind])
+    return _trading_page(
+        request,
+        ctx,
+        mode,
+        proposed,
         None,
         _STATUS.get(outcome.kind, 409),
         error=outcome.reasons[0] if outcome.reasons else "GUARD_REFUSED",

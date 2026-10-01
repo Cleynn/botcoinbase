@@ -50,3 +50,19 @@ CREATE TRIGGER live_grids_no_truncate BEFORE TRUNCATE ON live_grids
 GRANT SELECT ON live_grids TO td_app, td_ctl;
 GRANT INSERT ON live_grids TO td_ctl;
 GRANT UPDATE (state, stopped_at, stop_reason) ON live_grids TO td_ctl;
+
+-- Fund protection: an arming does not survive a change of the LIVE limits or of the trading mode
+-- made after it was given (limits are raised while PAUSED, then the old arming would still hold).
+CREATE OR REPLACE FUNCTION td_live_armed(p_now timestamptz) RETURNS boolean
+    LANGUAGE sql STABLE SET search_path = pg_catalog, public AS
+$fn$
+    SELECT EXISTS (
+        SELECT 1 FROM live_arming a
+        WHERE a.revoked_at IS NULL AND a.armed_at <= p_now AND a.expires_at > p_now
+          AND NOT EXISTS (
+              SELECT 1 FROM bot_control_history h
+              WHERE h.occurred_at >= a.armed_at
+                AND h.event IN ('KILL_ACTIVATE', 'BREAKER_OPEN', 'RECOVERY_INCOMPLETE', 'LIVE_PROFILE'))
+          AND NOT EXISTS (SELECT 1 FROM trading_config c WHERE c.mode = 'LIVE' AND c.updated_at > a.armed_at)
+          AND NOT EXISTS (SELECT 1 FROM trading_state s WHERE s.updated_at > a.armed_at))
+$fn$;

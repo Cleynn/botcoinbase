@@ -187,3 +187,109 @@ def test_a_post_without_csrf_changes_nothing(ac: TestClient, sql: Sql) -> None:
 
 def test_an_unknown_mode_is_not_a_route(ac: TestClient) -> None:
     assert ac.get("/bot/mode/margin/request").status_code in (400, 404, 422)
+
+
+# ------------------------------------------------------------------ editing the configuration
+from decimal import Decimal  # noqa: E402
+
+from app.capital.trading import TradingConfig  # noqa: E402
+from app.safety.control import CONFIG_PHRASES  # noqa: E402
+
+
+def cfg(mode: str = "LIVE", **kw: Any) -> TradingConfig:
+    base = {
+        "max_pairs": 3,
+        "levels_per_grid": 6,
+        "quote_per_grid": Decimal("20"),
+        "invested_cap": Decimal("60"),
+        "reserve": Decimal("20"),
+        "per_order_cap": Decimal("10"),
+    }
+    base.update(kw)
+    return TradingConfig(mode, **base)
+
+
+def stored(sql: Sql, mode: str) -> dict[str, Any]:
+    return sql("SELECT * FROM trading_config WHERE mode = %s", (mode,))[0]
+
+
+def test_an_admin_edits_the_live_configuration_and_it_is_audited(safe: SafetyEnv, sql: Sql) -> None:
+    safe.reauth.available = True
+    out = safe.control.set_trading_config(
+        safe.ctx, safe.actor, "live", cfg(), CONFIG_PHRASES["live"]
+    )
+    assert out.kind == "ok", out
+    row = stored(sql, "LIVE")
+    assert (row["max_pairs"], row["levels_per_grid"], row["invested_cap"]) == (3, 6, Decimal(60))
+    assert stored(sql, "PAPER")["max_pairs"] == 1  # the other mode is untouched
+    assert events(sql)[-2:] == ["bot.control_requested", "bot.config_changed"]
+
+
+def test_an_invalid_proposal_spends_no_reauth_and_changes_nothing(
+    safe: SafetyEnv, sql: Sql
+) -> None:
+    safe.reauth.available = True
+    for bad, code in (
+        (cfg(max_pairs=11), "MAX_PAIRS"),
+        (cfg(levels_per_grid=2), "LEVELS"),
+        (cfg(quote_per_grid=Decimal("30")), "GRIDS_EXCEED_INVESTED_CAP"),
+        (cfg(per_order_cap=Decimal("25")), "ORDER_EXCEEDS_GRID"),
+        (cfg(reserve=Decimal("5")), "RESERVE_BELOW_FLOOR"),
+    ):
+        out = safe.control.set_trading_config(
+            safe.ctx, safe.actor, "live", bad, CONFIG_PHRASES["live"]
+        )
+        assert out.kind == "invalid" and code in out.reasons, (code, out)
+    assert safe.reauth.consumed == 0 and stored(sql, "LIVE")["max_pairs"] == 1
+
+
+def test_a_config_change_needs_the_bot_paused(safe: SafetyEnv, sql: Sql) -> None:
+    safe.baseline("50")
+    assert safe.recover().complete
+    assert safe.act("resume").kind == "ok"
+    safe.reauth.available = True
+    out = safe.control.set_trading_config(
+        safe.ctx, safe.actor, "live", cfg(), CONFIG_PHRASES["live"]
+    )
+    assert out.kind == "not_allowed" and out.reasons == ("BOT_MUST_BE_PAUSED",)
+    assert stored(sql, "LIVE")["max_pairs"] == 1
+
+
+def test_the_edit_form_and_the_full_flow(ac: TestClient, sql: Sql) -> None:
+    assert "Pairs traded in parallel" in ac.get("/bot/trading/live/edit").text
+    q = "pairs=3&levels=6&per_grid=20&invested=60&reserve=20&per_order=10"
+    page = ac.get(f"/bot/trading/live/request?{q}")
+    assert page.status_code == 200 and "pairs: 1 -&gt; 3" in page.text
+    token = csrf_from(page.text)
+    fields = {
+        "csrf_token": token, "pairs": "3", "levels": "6", "per_grid": "20",
+        "invested": "60", "reserve": "20", "per_order": "10",
+    }  # fmt: skip
+    assert (
+        ac.post(
+            "/bot/trading/live/reauth",
+            data={**fields, "password": GOOD_PASSWORD},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    resp = ac.post(
+        "/bot/trading/live/confirm",
+        data={**fields, "confirmation": CONFIG_PHRASES["live"]},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303 and resp.headers["location"] == "/bot?msg=config_live"
+    assert stored(sql, "LIVE")["max_pairs"] == 3
+    assert "LIVE trading configuration was updated" in ac.get("/bot?msg=config_live").text
+
+
+def test_an_invalid_query_goes_back_to_the_form(ac: TestClient) -> None:
+    resp = ac.get(
+        "/bot/trading/live/request?pairs=3&levels=6&per_grid=99&invested=60&reserve=20&per_order=10",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303 and "err=GRIDS_EXCEED_INVESTED_CAP" in resp.headers["location"]
+
+
+def test_a_viewer_cannot_edit_the_configuration(vc: TestClient) -> None:
+    assert vc.get("/bot/trading/live/edit").status_code == 403

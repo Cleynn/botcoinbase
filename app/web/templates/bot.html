@@ -33,6 +33,23 @@
   {% if view.can_manage and not view.mode_changeable %}<p>Pause the bot first to change the mode.</p>{% endif %}
 </section>
 
+<section aria-labelledby="tc-h">
+  <h2 id="tc-h">Trading configuration</h2>
+  <p>How many pairs trade in parallel, how many grid lines and how much each grid invests, the total that may be invested and the reserve that never is.</p>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="Trading configuration table, scrolls sideways on narrow screens">
+  <table>
+    <caption>Trading configuration (USDC)</caption>
+    <thead><tr><th scope="col">Mode</th><th scope="col">Pairs</th><th scope="col">Grid lines</th><th scope="col">Per grid</th><th scope="col">Invested cap</th><th scope="col">Reserve</th><th scope="col">Largest order</th>{% if view.can_manage %}<th scope="col">Change</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for mode, pairs, levels, per_grid, invested, reserve, per_order, version in view.trading_rows %}
+      <tr><th scope="row">{{ mode | upper }}</th><td>{{ pairs }}</td><td>{{ levels }}</td><td>{{ per_grid }}</td><td>{{ invested }}</td><td>{{ reserve }}</td><td>{{ per_order }}</td>
+      {% if view.can_manage %}<td>{% if view.profile_changeable %}<a href="/bot/trading/{{ mode }}/edit">edit…</a>{% else %}pause the bot first{% endif %}</td>{% endif %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
 <section aria-labelledby="cp-h">
   <h2 id="cp-h">Capital</h2>
   <p>Capital limits come from a named profile. The bot sizes every grid from the USDC actually available (the exchange's balance, or the paper ledger in paper mode) after the protected reserve, never from a fixed amount. PAPER profile: <strong>{{ view.paper_profile }}</strong>. LIVE profile (recorded only; live is blocked): <strong>{{ view.live_profile }}</strong>.</p>

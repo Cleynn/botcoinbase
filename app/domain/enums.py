@@ -122,6 +122,7 @@ class AuditEventType(StrEnum):
     BOT_CANCEL_FAILED = "bot.cancel_failed"
     BOT_PROFILE_CHANGED = "bot.profile_changed"
     BOT_MODE_SWITCHED = "bot.mode_switched"
+    BOT_CONFIG_CHANGED = "bot.config_changed"
     LIVE_GRID_STARTED = "live.grid_started"
     LIVE_GRID_STOPPED = "live.grid_stopped"
     RECONCILIATION_OK = "reconciliation.ok"

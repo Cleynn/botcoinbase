@@ -111,6 +111,26 @@ class BotProfileConfirm(_Form):
     profile: str = _PROFILE
 
 
+_AMOUNT = Field(pattern=r"^[0-9]{1,9}(\.[0-9]{1,8})?$")
+
+
+class _TradingNumbers(_Form):
+    pairs: int = Field(ge=1, le=10)
+    levels: int = Field(ge=3, le=20)
+    per_grid: str = _AMOUNT
+    invested: str = _AMOUNT
+    reserve: str = _AMOUNT
+    per_order: str = _AMOUNT
+
+
+class BotTradingReauth(_TradingNumbers):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class BotTradingConfirm(_TradingNumbers):
+    confirmation: str = Field(max_length=128)
+
+
 class ReviewRequestFields(_Form):
     period_start: date
     period_end: date

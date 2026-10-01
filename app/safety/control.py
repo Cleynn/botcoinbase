@@ -26,6 +26,7 @@ import psycopg
 from app.auth.audit import AuditWriter
 from app.capital.funds import Funds, FundsUnavailable, paper_funds, usable_quote
 from app.capital.profiles import DEFAULT_PROFILE, PROFILES
+from app.capital.trading import TradingConfig, problems
 from app.config import Settings
 from app.domain.enums import AuditEventType as Evt
 from app.domain.enums import AuditResult as Res
@@ -54,6 +55,11 @@ MODE_PHRASES: Final[dict[str, str]] = {
     "backtest": "SWITCH TO BACKTEST MODE",
     "paper": "SWITCH TO PAPER MODE",
     "live": "SWITCH TO LIVE MODE",
+}
+# Editing the six numbers of a mode's trading configuration (never an order).
+CONFIG_PHRASES: Final[dict[str, str]] = {
+    "paper": "UPDATE TRADING CONFIGURATION FOR PAPER MODE",
+    "live": "UPDATE TRADING CONFIGURATION FOR LIVE MODE",
 }
 DB_RECONCILE_WINDOW_SECONDS: Final = 300  # the database guard's hard limit
 
@@ -97,6 +103,7 @@ class Overview:
     capital: CapitalOverview | None = None
     trading_mode: str = "PAPER"
     live_armed: bool = False
+    trading: tuple[TradingConfig, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -180,6 +187,10 @@ class ControlService:
                 capital=self._capital(repos, now),
                 trading_mode=repos.safety.trading_state()[0],
                 live_armed=repos.safety.live_armed(now),
+                trading=(
+                    repos.safety.trading_config("PAPER"),
+                    repos.safety.trading_config("LIVE"),
+                ),
             )
 
     def _capital(self, repos: Repos, now: datetime) -> CapitalOverview:
@@ -307,6 +318,76 @@ class ControlService:
             with self._storage.tx() as repos:
                 self._deny(repos, actor, action, "GUARD_REFUSED")
             return Outcome("not_allowed", ("GUARD_REFUSED",))
+
+    def trading_config(self, mode: str) -> TradingConfig:
+        with self._storage.tx() as repos:
+            return repos.safety.trading_config(mode.upper())
+
+    def set_trading_config(
+        self, ctx: AuthContext, actor: Actor, mode: str, proposed: TradingConfig, typed: str
+    ) -> Outcome:
+        """Edit the pair count, grid levels, quote per grid, invested cap, reserve and per-order
+        cap of PAPER or LIVE. Only while the bot is PAUSED (and the paper side idle for PAPER); the
+        database checks the same rules. An invalid proposal never spends the reauthentication.
+        Changing the LIVE numbers ends any live arming (the database sees the later change)."""
+        if mode not in CONFIG_PHRASES:
+            return Outcome("invalid", ("MODE",))
+        bad = problems(proposed)
+        if bad:
+            return Outcome("invalid", tuple(bad))
+        action = f"{mode}_config"
+        detail: dict[str, str | int | bool | None] = {"mode": mode.upper()}
+        refused = self._confirmed(ctx, actor, action, CONFIG_PHRASES[mode], typed, detail)
+        if refused is not None:
+            return refused
+        try:
+            with self._storage.tx() as repos:
+                return self._config_command(repos, actor, action, mode.upper(), proposed)
+        except psycopg.errors.IntegrityConstraintViolation:
+            with self._storage.tx() as repos:
+                self._deny(repos, actor, action, "GUARD_REFUSED")
+            return Outcome("not_allowed", ("GUARD_REFUSED",))
+
+    def _config_command(
+        self, repos: Repos, actor: Actor, action: str, mode: str, proposed: TradingConfig
+    ) -> Outcome:
+        now = self._clock.now()
+        if repos.safety.control(for_update=True).bot_state != "PAUSED":
+            self._deny(repos, actor, action, "BOT_MUST_BE_PAUSED")
+            return Outcome("not_allowed", ("BOT_MUST_BE_PAUSED",))
+        cur = repos.safety.trading_config(mode, for_update=True)
+        new = TradingConfig(
+            mode,
+            proposed.max_pairs,
+            proposed.levels_per_grid,
+            proposed.quote_per_grid,
+            proposed.invested_cap,
+            proposed.reserve,
+            proposed.per_order_cap,
+            cur.version,
+        )
+        if new == cur:
+            self._deny(repos, actor, action, "CONFIG_UNCHANGED")
+            return Outcome("not_allowed", ("CONFIG_UNCHANGED",))
+        if not repos.safety.update_trading_config(new, now):
+            return self._lost_race(repos, actor, action)
+        self._record(
+            repos,
+            actor,
+            Evt.BOT_CONFIG_CHANGED,
+            Res.SUCCESS,
+            f"{mode}_CONFIG_CHANGE",
+            {
+                "mode": mode,
+                "pairs": f"{cur.max_pairs}>{new.max_pairs}",
+                "levels": f"{cur.levels_per_grid}>{new.levels_per_grid}",
+                "per_grid": f"{cur.quote_per_grid}>{new.quote_per_grid}",
+                "invested": f"{cur.invested_cap}>{new.invested_cap}",
+                "reserve": f"{cur.reserve}>{new.reserve}",
+                "per_order": f"{cur.per_order_cap}>{new.per_order_cap}",
+            },
+        )
+        return Outcome("ok")
 
     def switch_mode(self, ctx: AuthContext, actor: Actor, mode: str, typed: str) -> Outcome:
         """Choose BACKTEST, PAPER or LIVE. Never creates, changes or sells an order and never arms

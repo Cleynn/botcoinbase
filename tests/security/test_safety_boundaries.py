@@ -296,6 +296,7 @@ def test_all_safety_sql_writes_target_only_safety_tables() -> None:
         "control_commands",
         "live_attestations",  # Phase 10: host-written, append-only
         "live_arming",  # Phase 10: host-written, revoke-only, at most 24 hours
+        "live_grids",  # Phase 10: the grids the live runner manages (host-written)
         "trading_config",  # Phase 10: per-mode limits, edited only while the bot is PAUSED
         "trading_state",  # Phase 10: active mode, changed only while the bot is PAUSED
     }, writes
