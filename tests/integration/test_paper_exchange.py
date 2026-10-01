@@ -543,7 +543,9 @@ def test_the_safety_cancel_is_never_blocked_even_if_limits_were_already_exceeded
     with psycopg.connect(db.owner_target().conninfo(), autocommit=True) as conn:
         conn.execute("ALTER TABLE bot_control DISABLE TRIGGER bot_control_guard_trigger")
         conn.execute("ALTER TABLE bot_control DISABLE TRIGGER bot_control_record_trigger")
+        conn.execute("ALTER TABLE bot_control DISABLE TRIGGER bot_control_apply_preset_trigger")
         conn.execute("UPDATE bot_control SET paper_profile = 'research'")
+        conn.execute("ALTER TABLE bot_control ENABLE TRIGGER bot_control_apply_preset_trigger")
         conn.execute("ALTER TABLE bot_control ENABLE TRIGGER bot_control_record_trigger")
         conn.execute("ALTER TABLE bot_control ENABLE TRIGGER bot_control_guard_trigger")
     assert paper.exchange.cancel_for_safety("TEST") >= 1

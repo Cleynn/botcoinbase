@@ -17,19 +17,21 @@ Phases 1-9, the Phase 9 review fixes (DEC-025) and the live-trading phase (DEC-0
 
 ## 3. Verified vs not verified
 **Verified (real PostgreSQL 16 via pgserver, real promtool/prometheus/node_exporter, real Chromium):**
-- Full suite on the review-fix commit: 3109 passed / 1 failed; the failure was a wrong assumption in
-  one new test (fixed; `test_capital_profiles.py` then 41 passed). The fixed file was re-run alone,
-  the whole suite was not re-run once more after that one-test fix.
+- Full suite after the live phase (DEC-026): 3173 passed, 8 skipped (Prometheus/node_exporter not
+  installed here), 6 failed; the six were tests of the old ceilings (one active pair index, 12 USDC
+  schema cap, profile-change trigger as owner) and were updated; those files were re-run: 267 passed. The
+  whole suite was NOT re-run once more after those edits. Live runner/CLI/mode/config tests use the FAKE
+  exchange only.
 - Concurrency tests (`test_safety_concurrency.py`) fail when the two locks are removed and pass with
   them (negative control run). The H1 regression tests include the exact reproduced wedge state.
 - Migration checksum guard tested (edit of an applied migration is refused).
 - Real-browser check of the Bot page: 28/28 (incl. no horizontal scroll at 375 px).
-- Migrations 0006, 0007 and 0008 roll back and re-apply (`test_rollback_and_remigrate_round_trip`).
+- Migrations 0006 to 0012 roll back and re-apply (`test_rollback_and_remigrate_round_trip`).
 - ruff format/check and `mypy app tests scripts` clean.
 
 **NOT verified (do not claim otherwise):**
-- Any real Coinbase response. There is no signer and no credentials (`NullSigner`;
-  `app/exchange/factory.py` returns None). The exchange-funds read has only run against `FakeExchange`.
+- Any real Coinbase request or response: the signer, gateway, funds read and runner have only run against
+  `FakeExchange` and canned shapes (AS-C3, AS-C4). `live check` has never been run.
 - Docker/compose start, Caddy config, TLS, public-port exposure, Grafana live login, backup/restore;
   DNS A records for both hosts resolved once from the sandbox (see section 7, item 5).
 - `expanded` / `medium` profiles beyond tests (no paper soak). Loss ($10) and drawdown (20%) SQL

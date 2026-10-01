@@ -66,3 +66,26 @@ $fn$
           AND NOT EXISTS (SELECT 1 FROM trading_config c WHERE c.mode = 'LIVE' AND c.updated_at > a.armed_at)
           AND NOT EXISTS (SELECT 1 FROM trading_state s WHERE s.updated_at > a.armed_at))
 $fn$;
+
+-- A pair beyond the configured number of active pairs is a unique-style conflict, so the service
+-- reports it as ANOTHER_PAIR_ACTIVE (as it did when only one pair could be active).
+CREATE OR REPLACE FUNCTION pairs_max_active_guard() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, public AS
+$fn$
+DECLARE
+    allowed integer;
+    active integer;
+BEGIN
+    IF NEW.state = 'PAPER_ACTIVE' AND (TG_OP = 'INSERT' OR OLD.state IS DISTINCT FROM NEW.state) THEN
+        PERFORM pg_advisory_xact_lock(hashtext('td_active_pairs'));
+        SELECT c.max_pairs INTO allowed FROM trading_config c
+            JOIN trading_state s ON c.mode = CASE WHEN s.active_mode = 'LIVE' THEN 'LIVE' ELSE 'PAPER' END
+            WHERE s.id;
+        SELECT count(*) INTO active FROM pairs WHERE state = 'PAPER_ACTIVE' AND id <> NEW.id;
+        IF active >= COALESCE(allowed, 1) THEN
+            RAISE EXCEPTION 'the configured number of active pairs is already reached' USING ERRCODE = 'unique_violation';
+        END IF;
+    END IF;
+    RETURN NEW;
+END
+$fn$;

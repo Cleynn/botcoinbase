@@ -311,13 +311,13 @@ def test_every_hot_guard_blocks_before_any_exchange_call(
     ]
 
 
-def test_an_intent_over_the_largest_profile_cap_is_refused_by_the_schema_and_never_stored(
+def test_an_intent_over_the_schema_ceiling_is_refused_and_never_stored(
     safe: SafetyEnv, sql: Sql
 ) -> None:
     safe.running()
     result = safe.pipeline.submit(
-        replace(safe.proposal(), base_qty=D("0.6")), source="test", slot="big", book=safe.book()
-    )  # 60 USDC: over every profile
+        replace(safe.proposal(), base_qty=D("10001")), source="test", slot="big", book=safe.book()
+    )  # 1,000,100 USDC: over the schema ceiling
     assert result.kind == "invalid" and result.reasons == ("INTENT_REFUSED",)
     assert sql("SELECT count(*) AS n FROM order_intents")[0]["n"] == 0 and submit_count(safe) == 0
     assert "INTENT_REFUSED" in [

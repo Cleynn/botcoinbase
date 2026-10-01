@@ -340,11 +340,12 @@ def test_the_database_allows_only_one_active_pair_even_for_raw_updates(
     )
 
 
-def test_the_active_index_covers_live_active_and_states_cannot_widen_silently(sql: Sql) -> None:
-    index = sql("SELECT indexdef FROM pg_indexes WHERE indexname = 'pairs_one_active'")[0][
-        "indexdef"
-    ]
-    assert "UNIQUE" in index and "LIVE_ACTIVE" in index and "PAPER_ACTIVE" in index
+def test_the_active_pair_limit_is_a_database_trigger_and_states_cannot_widen_silently(
+    sql: Sql,
+) -> None:
+    # DEC-026: the one-active-pair index became a trigger that reads the configured number of pairs
+    assert not sql("SELECT 1 FROM pg_indexes WHERE indexname = 'pairs_one_active'")
+    assert sql("SELECT 1 FROM pg_trigger WHERE tgname = 'pairs_max_active_trigger'")
     check = sql(
         "SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint "
         "WHERE conrelid = 'pairs'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%state = ANY%'"

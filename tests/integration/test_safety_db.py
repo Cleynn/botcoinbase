@@ -281,7 +281,7 @@ def test_an_intent_is_immutable_and_capped_in_the_schema(safe: SafetyEnv, db: Te
     refuse(db, "td_ctl", "DELETE FROM order_intents")
     refuse(db, "td_ctl", "TRUNCATE order_intents")
     with pytest.raises(VIOLATION):
-        safe.make_intent(price="100", qty="0.51")  # 51 USDC: over the largest profile's order cap
+        safe.make_intent(price="100", qty="10001")  # over the schema ceiling (1,000,000, DEC-026)
     assert intent.price == 100
 
 
