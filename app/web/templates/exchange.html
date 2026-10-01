@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Coinbase</h1>
+<p class="notice">REAL account data, read-only. A host service reads Coinbase with GET requests and stores the result; this page shows what was stored and refreshes every 30 seconds. Nothing on this page can place, change or cancel an order.</p>
+{% include "exchange_data.html" %}
+{% endblock %}

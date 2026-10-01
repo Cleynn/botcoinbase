@@ -94,6 +94,10 @@ def _parser() -> argparse.ArgumentParser:
 
     add_live_parser(top)
 
+    from app.feed.cli import add_parser as add_feed_parser
+
+    add_feed_parser(top)
+
     paper = top.add_parser("paper").add_subparsers(dest="command", required=True)
     paper.add_parser("status")
     start = paper.add_parser("start")
@@ -164,6 +168,10 @@ def _dispatch(
         from app.live.cli import run_live
 
         return run_live(args, settings, storage, clock, out, reader, gateway, client, sleep)
+    if args.group == "feed":
+        from app.feed.cli import run_feed
+
+        return run_feed(args, settings, storage, clock, out, reader, sleep)
     if args.group == "safety":
         return _safety(args, settings, storage, clock, out, reader, gateway)
     if args.group == "market":

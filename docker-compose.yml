@@ -305,6 +305,39 @@ services:
     mem_limit: 512m
     pids_limit: 100
 
+  # Exchange feed: reads the Coinbase account (GET requests only) every minute and stores it for the
+  # web interface (Coinbase page). It has no order gateway and never trades.
+  # Start with: docker compose --profile discovery up -d feed
+  feed:
+    <<: *hardening
+    restart: unless-stopped
+    profiles: [discovery]
+    build: *app-build
+    image: tradingdots-app:phase4
+    user: "10001:10001"
+    entrypoint: ["python", "-m", "app.cli"]
+    command: ["feed", "run"]
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+      TD_DB_USER: td_ctl
+      TD_DB_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
+      TD_EGRESS_PROXY: http://egress-proxy:3128
+      TD_COINBASE_KEY_FILE: /run/secrets/coinbase.json
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    volumes:
+      # Coinbase key (host only, never the web app); /dev/null when no key is installed
+      - ${TD_COINBASE_KEY_HOST_PATH:-/dev/null}:/run/secrets/coinbase.json:ro
+    networks: [backend, egress_int]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      egress-proxy: {condition: service_healthy}
+    mem_limit: 256m
+    pids_limit: 100
+
   # ---- Monitoring (Phase 3): observational and read-only, nothing here is published ----------
   prometheus:
     <<: *hardening

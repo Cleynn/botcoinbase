@@ -25,7 +25,7 @@ import psycopg
 
 from app.adapters import coinbase_parse as parse
 from app.adapters.coinbase_public import CoinbasePublicClient
-from app.capital.trading import TradingConfig, problems
+from app.capital.trading import MAX_PAIRS_LIMIT, TradingConfig, problems
 from app.config import Settings
 from app.domain.models import Clock
 from app.exchange.credentials import CredentialError, key_file_from_env, load_credentials
@@ -61,7 +61,7 @@ def add_parser(top: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     arm.add_argument("--confirm", required=True, help=f"the exact phrase {ARM_PHRASE}")
     live.add_parser("disarm")
     cfg = live.add_parser("config")
-    cfg.add_argument("--pairs", type=int)
+    cfg.add_argument("--pairs", help="the pairs to trade, e.g. BTC-USDC,ETH-USDC (or none)")
     cfg.add_argument("--levels", type=int)
     cfg.add_argument("--per-grid")
     cfg.add_argument("--invested")
@@ -84,9 +84,10 @@ def _amount(text: str | None, current: Decimal) -> Decimal:
     return value
 
 
-def _line(cfg: TradingConfig) -> str:
+def _line(cfg: TradingConfig, chosen: list[str]) -> str:
     return (
-        f"pairs={cfg.max_pairs} levels={cfg.levels_per_grid} per_grid={cfg.quote_per_grid} "
+        f"pairs={','.join(chosen) or 'none'} levels={cfg.levels_per_grid} "
+        f"per_grid={cfg.quote_per_grid} "
         f"invested_cap={cfg.invested_cap} reserve={cfg.reserve} per_order={cfg.per_order_cap} "
         f"(version {cfg.version})"
     )
@@ -111,11 +112,12 @@ def run_live(
         with storage.tx() as repos:
             mode, _ = repos.safety.trading_state()
             cfg = repos.safety.trading_config("LIVE")
+            chosen = [r.product_id for r in repos.safety.trading_pairs("LIVE")]
             armed = repos.safety.live_armed(now)
             control = repos.safety.control()
             grids = repos.safety.live_grids()
         out(f"mode={mode} live_armed={armed} bot={control.bot_state} kill={control.kill_switch}")
-        out("LIVE configuration: " + _line(cfg))
+        out("LIVE configuration: " + _line(cfg, chosen))
         bad = problems(cfg)
         if bad:
             out("configuration problems: " + ",".join(bad))
@@ -129,6 +131,19 @@ def run_live(
     if cmd == "config":
         with storage.tx() as repos:
             cur = repos.safety.trading_config("LIVE", for_update=True)
+            chosen = [r.product_id for r in repos.safety.trading_pairs("LIVE")]
+            wanted: list[str] | None = None
+            pair_ids = []
+            if args.pairs is not None:
+                wanted = sorted({p for p in args.pairs.upper().split(",") if p and p != "NONE"})
+                options = {r.product_id: r.pair_id for r in repos.safety.selectable_pairs()}
+                if len(wanted) > MAX_PAIRS_LIMIT:
+                    out("refused: MAX_PAIRS")
+                    return 1
+                if any(p not in options for p in wanted):
+                    out("refused: PAIR_NOT_SELECTABLE (validate the pair first: Pairs page)")
+                    return 1
+                pair_ids = [options[p] for p in wanted]
             changed = any(
                 v is not None
                 for v in (
@@ -141,12 +156,12 @@ def run_live(
                 )
             )
             if not changed:
-                out(_line(cur))
+                out(_line(cur, chosen))
                 return 0
             try:
                 new = TradingConfig(
                     "LIVE",
-                    args.pairs if args.pairs is not None else cur.max_pairs,
+                    max(1, len(wanted)) if wanted is not None else cur.max_pairs,
                     args.levels if args.levels is not None else cur.levels_per_grid,
                     _amount(args.per_grid, cur.quote_per_grid),
                     _amount(args.invested, cur.invested_cap),
@@ -163,10 +178,13 @@ def run_live(
                 return 1
             try:
                 ok = repos.safety.update_trading_config(new, clock.now())
+                if ok and wanted is not None:
+                    repos.safety.set_trading_pairs("LIVE", pair_ids)
+                    chosen = wanted
             except psycopg.errors.IntegrityConstraintViolation:
                 out("refused: the database only accepts this while the bot is PAUSED")
                 return 1
-        out(("updated: " if ok else "conflict, nothing changed: ") + _line(new))
+        out(("updated: " if ok else "conflict, nothing changed: ") + _line(new, chosen))
         return 0 if ok else 1
     if cmd == "disarm":
         with storage.tx() as repos:

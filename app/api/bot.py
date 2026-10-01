@@ -19,6 +19,7 @@ from app.api.schemas import (
     BotProfileReauth,
     BotTradingConfirm,
     BotTradingReauth,
+    PairPick,
     ReviewPlainConfirm,
     ReviewPlainReauth,
 )
@@ -224,7 +225,7 @@ _AMOUNT_Q = Query(pattern=r"^[0-9]{1,9}(\.[0-9]{1,8})?$")
 
 def _proposed(
     mode: str,
-    pairs: int,
+    pick: list[str],
     levels: int,
     per_grid: str,
     invested: str,
@@ -233,7 +234,7 @@ def _proposed(
 ) -> TradingConfig:
     return TradingConfig(
         mode.upper(),
-        pairs,
+        max(1, len(set(pick))),  # the pair count is the size of the selection (at least 1)
         levels,
         Decimal(per_grid),
         Decimal(invested),
@@ -247,6 +248,7 @@ def _trading_page(
     ctx: AuthContext,
     mode: str,
     proposed: TradingConfig,
+    pick: list[str],
     message: str | None,
     status: int = 200,
     error: str | None = None,
@@ -256,6 +258,8 @@ def _trading_page(
         mode,
         services.bot.trading_config(mode),
         proposed,
+        chosen=services.bot.trading_selection(mode)[0],
+        pick=tuple(sorted(set(pick))),
         reauth_active=services.bot.reauth_active(ctx),
         message=message,
         error=error,
@@ -271,7 +275,8 @@ def trading_edit(
     err: Annotated[str | None, Query(pattern=r"^[A-Z_]{3,40}$")] = None,
 ) -> Response:
     services = get_services(request)
-    view = views.trading_edit(mode, services.bot.trading_config(mode), err)
+    chosen, options = services.bot.trading_selection(mode)
+    view = views.trading_edit(mode, services.bot.trading_config(mode), chosen, options, err)
     return services.renderer.html("bot_trading_edit.html", auth=ctx, active="bot", view=view)
 
 
@@ -279,27 +284,32 @@ def trading_edit(
 def trading_request(
     request: Request,
     mode: Mode,
-    pairs: Annotated[int, Query(ge=1, le=10)],
     levels: Annotated[int, Query(ge=3, le=20)],
     per_grid: Annotated[str, _AMOUNT_Q],
     invested: Annotated[str, _AMOUNT_Q],
     reserve: Annotated[str, _AMOUNT_Q],
     per_order: Annotated[str, _AMOUNT_Q],
     ctx: Annotated[AuthContext, Depends(_admin)],
+    pick: Annotated[list[PairPick] | None, Query(max_length=10)] = None,
     msg: Annotated[str | None, Query(max_length=32)] = None,
 ) -> Response:
-    proposed = _proposed(mode, pairs, levels, per_grid, invested, reserve, per_order)
+    picked = pick or []
+    proposed = _proposed(mode, picked, levels, per_grid, invested, reserve, per_order)
     bad = problems(proposed)
+    selectable = {p for p, _state in get_services(request).bot.trading_selection(mode)[1]}
+    if not bad and not set(picked) <= selectable:
+        bad = ["PAIR_NOT_SELECTABLE"]
     if bad:  # shown on the form, nothing is spent
         return RedirectResponse(f"/bot/trading/{mode}/edit?err={bad[0]}", status_code=303)
-    return _trading_page(request, ctx, mode, proposed, msg)
+    return _trading_page(request, ctx, mode, proposed, picked, msg)
 
 
 def _query(mode: str, form: BotTradingReauth | BotTradingConfirm) -> str:
+    picks = "".join(f"&pick={p}" for p in sorted(set(form.pick)))  # validated product ids
     return (
-        f"/bot/trading/{mode}/request?pairs={form.pairs}&levels={form.levels}"
+        f"/bot/trading/{mode}/request?levels={form.levels}"
         f"&per_grid={form.per_grid}&invested={form.invested}&reserve={form.reserve}"
-        f"&per_order={form.per_order}"
+        f"&per_order={form.per_order}{picks}"
     )
 
 
@@ -314,9 +324,11 @@ def trading_reauth(
     if code == "reauth_ok":
         return RedirectResponse(f"{_query(mode, form)}&msg={code}", status_code=303)
     proposed = _proposed(
-        mode, form.pairs, form.levels, form.per_grid, form.invested, form.reserve, form.per_order
+        mode, form.pick, form.levels, form.per_grid, form.invested, form.reserve, form.per_order
     )
-    return _trading_page(request, ctx, mode, proposed, code, 429 if code == "throttled" else 400)
+    return _trading_page(
+        request, ctx, mode, proposed, form.pick, code, 429 if code == "throttled" else 400
+    )
 
 
 @router.post("/bot/trading/{mode}/confirm")
@@ -327,20 +339,23 @@ def trading_confirm(
     ctx: Annotated[AuthContext, Depends(_admin)],
 ) -> Response:
     proposed = _proposed(
-        mode, form.pairs, form.levels, form.per_grid, form.invested, form.reserve, form.per_order
+        mode, form.pick, form.levels, form.per_grid, form.invested, form.reserve, form.per_order
     )
     outcome: Outcome = get_services(request).bot.set_trading_config(
-        ctx, _actor(request, ctx), mode, proposed, form.confirmation
+        ctx, _actor(request, ctx), mode, proposed, form.confirmation, selection=form.pick
     )
     if outcome.kind == "ok":
         return RedirectResponse(f"/bot?msg=config_{mode}", status_code=303)
     if outcome.kind in ("phrase_mismatch", "reauth_required"):
-        return _trading_page(request, ctx, mode, proposed, outcome.kind, _STATUS[outcome.kind])
+        return _trading_page(
+            request, ctx, mode, proposed, form.pick, outcome.kind, _STATUS[outcome.kind]
+        )
     return _trading_page(
         request,
         ctx,
         mode,
         proposed,
+        form.pick,
         None,
         _STATUS.get(outcome.kind, 409),
         error=outcome.reasons[0] if outcome.reasons else "GUARD_REFUSED",

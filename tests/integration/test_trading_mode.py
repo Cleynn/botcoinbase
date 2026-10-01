@@ -213,6 +213,74 @@ def stored(sql: Sql, mode: str) -> dict[str, Any]:
     return sql("SELECT * FROM trading_config WHERE mode = %s", (mode,))[0]
 
 
+def chosen(sql: Sql, mode: str) -> list[str]:
+    rows = sql(
+        "SELECT pr.product_id FROM trading_pairs t JOIN pairs p ON p.id = t.pair_id "
+        "JOIN products pr ON pr.id = p.product_uuid WHERE t.mode = %s ORDER BY 1",
+        (mode,),
+    )
+    return [r["product_id"] for r in rows]
+
+
+# ---------------------------------------------------------------- choosing the pairs
+def choose(safe: SafetyEnv, pairs: list[str], **kw: Any) -> Any:
+    safe.reauth.available = True
+    return safe.control.set_trading_config(
+        safe.ctx, safe.actor, "live", cfg(**kw), CONFIG_PHRASES["live"], selection=pairs
+    )
+
+
+def test_choosing_pairs_stores_them_and_the_count_follows(safe: SafetyEnv, sql: Sql) -> None:
+    assert chosen(sql, "LIVE") == []  # nothing is chosen until the operator chooses
+    assert choose(safe, ["BTC-USDC", "BTC-USDC"]).kind == "ok"
+    assert chosen(sql, "LIVE") == ["BTC-USDC"]
+    row = stored(sql, "LIVE")
+    assert (row["max_pairs"], row["version"]) == (1, 2)  # not the 3 of the proposal
+    detail = sql("SELECT detail FROM audit_events ORDER BY seq DESC LIMIT 1")[0]["detail"]
+    assert '"selected":"BTC-USDC"' in str(detail).replace(" ", "").replace("'", '"')
+    assert safe.control.trading_selection("live") == (
+        ("BTC-USDC",),
+        (("BTC-USDC", "PAPER_ACTIVE"),),
+    )
+
+
+def test_a_change_of_the_chosen_pairs_alone_is_a_new_version(safe: SafetyEnv, sql: Sql) -> None:
+    assert choose(safe, ["BTC-USDC"]).kind == "ok"
+    safe.clock.advance(1)
+    same = choose(safe, ["BTC-USDC"])
+    assert same.kind == "not_allowed" and same.reasons == ("CONFIG_UNCHANGED",)
+    safe.clock.advance(1)
+    assert choose(safe, []).kind == "ok"  # same numbers, no pair: a live arming ends with it
+    assert chosen(sql, "LIVE") == [] and stored(sql, "LIVE")["version"] == 3
+    assert stored(sql, "LIVE")["max_pairs"] == 1  # never below one
+
+
+def test_an_unknown_or_unvalidated_pair_is_refused(safe: SafetyEnv, sql: Sql) -> None:
+    out = choose(safe, ["DOGE-USDC"])
+    assert out.kind == "not_allowed" and out.reasons == ("PAIR_NOT_SELECTABLE",)
+    assert chosen(sql, "LIVE") == [] and stored(sql, "LIVE")["version"] == 1
+    many = choose(safe, [f"C{i}-USDC" for i in range(11)])
+    assert many.kind == "invalid" and many.reasons == ("MAX_PAIRS",)
+
+
+def test_the_caps_are_checked_for_the_number_of_chosen_pairs(safe: SafetyEnv) -> None:
+    # one chosen pair at 50 per grid fits an invested cap of 60; the proposal's own count is ignored
+    assert choose(safe, ["BTC-USDC"], quote_per_grid=Decimal("50")).kind == "ok"
+
+
+def test_the_database_guards_the_selection(safe: SafetyEnv, sql: Sql) -> None:
+    import psycopg
+
+    with pytest.raises(psycopg.errors.IntegrityConstraintViolation):  # an unknown role
+        sql("INSERT INTO trading_pairs (mode, pair_id) VALUES ('LIVE', %s)", (safe.pair_id,))
+    safe.baseline("50")
+    assert safe.recover().complete
+    assert safe.act("resume").kind == "ok"
+    with pytest.raises(psycopg.errors.IntegrityConstraintViolation), safe.ctl.tx() as repos:
+        repos.safety.set_trading_pairs("LIVE", [safe.pair_id])  # the bot is RUNNING
+    assert chosen(sql, "LIVE") == []
+
+
 def test_an_admin_edits_the_live_configuration_and_it_is_audited(safe: SafetyEnv, sql: Sql) -> None:
     safe.reauth.available = True
     out = safe.control.set_trading_config(
@@ -256,13 +324,20 @@ def test_a_config_change_needs_the_bot_paused(safe: SafetyEnv, sql: Sql) -> None
 
 
 def test_the_edit_form_and_the_full_flow(ac: TestClient, sql: Sql) -> None:
-    assert "Pairs traded in parallel" in ac.get("/bot/trading/live/edit").text
-    q = "pairs=3&levels=6&per_grid=20&invested=60&reserve=20&per_order=10"
+    form = ac.get("/bot/trading/live/edit").text
+    assert "Pairs chosen for LIVE mode" in form and "Pairs traded in parallel" not in form
+    assert "only the chosen pairs are traded" in form
+    paper = ac.get("/bot/trading/paper/edit").text  # the paper trader does not follow the choice
+    assert "still trades the one active pair" in paper
+    assert "only the chosen pairs are traded" not in paper
+    assert 'name="pick" type="checkbox" value="BTC-USDC"' in form and "checked" not in form
+    q = "pick=BTC-USDC&levels=6&per_grid=20&invested=60&reserve=20&per_order=10"
     page = ac.get(f"/bot/trading/live/request?{q}")
-    assert page.status_code == 200 and "pairs: 1 -&gt; 3" in page.text
+    assert page.status_code == 200 and "pairs chosen: none -&gt; BTC-USDC" in page.text
+    assert page.text.count('name="pick" value="BTC-USDC"') == 2  # carried by both forms
     token = csrf_from(page.text)
     fields = {
-        "csrf_token": token, "pairs": "3", "levels": "6", "per_grid": "20",
+        "csrf_token": token, "pick": "BTC-USDC", "levels": "6", "per_grid": "20",
         "invested": "60", "reserve": "20", "per_order": "10",
     }  # fmt: skip
     assert (
@@ -279,8 +354,21 @@ def test_the_edit_form_and_the_full_flow(ac: TestClient, sql: Sql) -> None:
         follow_redirects=False,
     )
     assert resp.status_code == 303 and resp.headers["location"] == "/bot?msg=config_live"
-    assert stored(sql, "LIVE")["max_pairs"] == 3
-    assert "LIVE trading configuration was updated" in ac.get("/bot?msg=config_live").text
+    assert stored(sql, "LIVE")["max_pairs"] == 1  # the count is the number of chosen pairs
+    assert chosen(sql, "LIVE") == ["BTC-USDC"] and chosen(sql, "PAPER") == []
+    bot = ac.get("/bot?msg=config_live").text
+    assert "LIVE trading configuration was updated" in bot and "BTC-USDC (active)" in bot
+    assert "checked" in ac.get("/bot/trading/live/edit").text
+
+
+def test_a_pair_that_is_not_validated_cannot_be_chosen(ac: TestClient, sql: Sql) -> None:
+    q = "pick=DOGE-USDC&levels=6&per_grid=20&invested=60&reserve=20&per_order=10"
+    resp = ac.get(f"/bot/trading/live/request?{q}", follow_redirects=False)
+    assert resp.status_code == 303 and "err=PAIR_NOT_SELECTABLE" in resp.headers["location"]
+    assert "not a validated pair" in ac.get(resp.headers["location"]).text
+    bad = ac.get("/bot/trading/live/request?pick=<script>&levels=6&per_grid=20&invested=60"
+                 "&reserve=20&per_order=10")  # fmt: skip
+    assert bad.status_code == 400 and chosen(sql, "LIVE") == []
 
 
 def test_an_invalid_query_goes_back_to_the_form(ac: TestClient) -> None:

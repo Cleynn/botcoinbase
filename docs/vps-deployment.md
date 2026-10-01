@@ -25,6 +25,8 @@ with the output of `scripts/vps/check.sh` (it never prints secrets).
 | 10 | open `https://tradingdots.onthewall.ovh/` | log in | the dashboard over valid HTTPS |
 | 11 | `scripts/vps/check.sh` | final check | `0 failure(s)` |
 
+Optional, after step 7: `docker compose --profile discovery up -d feed` starts the exchange feed. It reads the Coinbase account every minute with GET requests only and the web interface shows the result on the Coinbase page (`/coinbase`). Check it with `docker compose --profile discovery logs --tail=5 feed`.
+
 Steps 2 and 3 can be run in either order; step 4 can be done while they run (propagation takes time).
 
 ## Reading the check output

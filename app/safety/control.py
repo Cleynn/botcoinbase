@@ -15,8 +15,8 @@ RESUME needs a current successful reconciliation, which only the host can produc
 from __future__ import annotations
 
 import hmac
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 from uuid import UUID, uuid4
@@ -26,7 +26,7 @@ import psycopg
 from app.auth.audit import AuditWriter
 from app.capital.funds import Funds, FundsUnavailable, paper_funds, usable_quote
 from app.capital.profiles import DEFAULT_PROFILE, PROFILES
-from app.capital.trading import TradingConfig, problems
+from app.capital.trading import MAX_PAIRS_LIMIT, TradingConfig, problems
 from app.config import Settings
 from app.domain.enums import AuditEventType as Evt
 from app.domain.enums import AuditResult as Res
@@ -104,6 +104,8 @@ class Overview:
     trading_mode: str = "PAPER"
     live_armed: bool = False
     trading: tuple[TradingConfig, ...] = ()
+    # the pairs chosen per mode: (mode, ((product id, pair state), ...)) for PAPER then LIVE
+    trading_pairs: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -190,6 +192,10 @@ class ControlService:
                 trading=(
                     repos.safety.trading_config("PAPER"),
                     repos.safety.trading_config("LIVE"),
+                ),
+                trading_pairs=tuple(
+                    (m, tuple((r.product_id, r.state) for r in repos.safety.trading_pairs(m)))
+                    for m in ("PAPER", "LIVE")
                 ),
             )
 
@@ -323,15 +329,39 @@ class ControlService:
         with self._storage.tx() as repos:
             return repos.safety.trading_config(mode.upper())
 
+    def trading_selection(self, mode: str) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+        """(product ids selected for the mode, every selectable pair as (product id, state))."""
+        with self._storage.tx() as repos:
+            return (
+                tuple(r.product_id for r in repos.safety.trading_pairs(mode.upper())),
+                tuple((r.product_id, r.state) for r in repos.safety.selectable_pairs()),
+            )
+
     def set_trading_config(
-        self, ctx: AuthContext, actor: Actor, mode: str, proposed: TradingConfig, typed: str
+        self,
+        ctx: AuthContext,
+        actor: Actor,
+        mode: str,
+        proposed: TradingConfig,
+        typed: str,
+        selection: Sequence[str] | None = None,
     ) -> Outcome:
-        """Edit the pair count, grid levels, quote per grid, invested cap, reserve and per-order
-        cap of PAPER or LIVE. Only while the bot is PAUSED (and the paper side idle for PAPER); the
-        database checks the same rules. An invalid proposal never spends the reauthentication.
-        Changing the LIVE numbers ends any live arming (the database sees the later change)."""
+        """Edit the pairs traded, grid levels, quote per grid, invested cap, reserve and per-order
+        cap of PAPER or LIVE. `selection` names the pairs (product ids); the pair count is then its
+        size (at least 1), so the caps are checked for exactly the chosen pairs. Without a
+        selection the chosen pairs stay and only the numbers change. Selecting a pair never
+        activates it and never places an order. Only while the bot is PAUSED (and the paper side
+        idle for PAPER); the database checks the same rules. An invalid proposal never spends the
+        reauthentication. Changing the LIVE configuration ends any live arming (the database sees
+        the later change)."""
         if mode not in CONFIG_PHRASES:
             return Outcome("invalid", ("MODE",))
+        wanted: tuple[str, ...] | None = None
+        if selection is not None:
+            wanted = tuple(sorted(set(selection)))
+            if len(wanted) > MAX_PAIRS_LIMIT:
+                return Outcome("invalid", ("MAX_PAIRS",))
+            proposed = replace(proposed, max_pairs=max(1, len(wanted)))
         bad = problems(proposed)
         if bad:
             return Outcome("invalid", tuple(bad))
@@ -342,20 +372,34 @@ class ControlService:
             return refused
         try:
             with self._storage.tx() as repos:
-                return self._config_command(repos, actor, action, mode.upper(), proposed)
+                return self._config_command(repos, actor, action, mode.upper(), proposed, wanted)
         except psycopg.errors.IntegrityConstraintViolation:
             with self._storage.tx() as repos:
                 self._deny(repos, actor, action, "GUARD_REFUSED")
             return Outcome("not_allowed", ("GUARD_REFUSED",))
 
     def _config_command(
-        self, repos: Repos, actor: Actor, action: str, mode: str, proposed: TradingConfig
+        self,
+        repos: Repos,
+        actor: Actor,
+        action: str,
+        mode: str,
+        proposed: TradingConfig,
+        wanted: tuple[str, ...] | None,
     ) -> Outcome:
         now = self._clock.now()
         if repos.safety.control(for_update=True).bot_state != "PAUSED":
             self._deny(repos, actor, action, "BOT_MUST_BE_PAUSED")
             return Outcome("not_allowed", ("BOT_MUST_BE_PAUSED",))
         cur = repos.safety.trading_config(mode, for_update=True)
+        chosen = tuple(r.product_id for r in repos.safety.trading_pairs(mode))
+        pair_ids: list[UUID] = []
+        if wanted is not None:
+            options = {r.product_id: r.pair_id for r in repos.safety.selectable_pairs()}
+            if any(p not in options for p in wanted):
+                self._deny(repos, actor, action, "PAIR_NOT_SELECTABLE")
+                return Outcome("not_allowed", ("PAIR_NOT_SELECTABLE",))
+            pair_ids = [options[p] for p in wanted]
         new = TradingConfig(
             mode,
             proposed.max_pairs,
@@ -366,11 +410,14 @@ class ControlService:
             proposed.per_order_cap,
             cur.version,
         )
-        if new == cur:
+        if new == cur and (wanted is None or wanted == chosen):
             self._deny(repos, actor, action, "CONFIG_UNCHANGED")
             return Outcome("not_allowed", ("CONFIG_UNCHANGED",))
+        # always a new version, even when only the chosen pairs change: a live arming ends with it
         if not repos.safety.update_trading_config(new, now):
             return self._lost_race(repos, actor, action)
+        if wanted is not None:
+            repos.safety.set_trading_pairs(mode, pair_ids)
         self._record(
             repos,
             actor,
@@ -380,6 +427,7 @@ class ControlService:
             {
                 "mode": mode,
                 "pairs": f"{cur.max_pairs}>{new.max_pairs}",
+                "selected": ",".join(chosen if wanted is None else wanted)[:240] or "none",
                 "levels": f"{cur.levels_per_grid}>{new.levels_per_grid}",
                 "per_grid": f"{cur.quote_per_grid}>{new.quote_per_grid}",
                 "invested": f"{cur.invested_cap}>{new.invested_cap}",

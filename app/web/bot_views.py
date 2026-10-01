@@ -52,13 +52,14 @@ REASON_TEXT: Final[dict[str, str]] = {
     "PROFILE": "that capital profile does not exist",
     "PROFILE_NOT_APPROVED": "only the pilot profile is approved in production",
     "MODE": "that mode does not exist",
-    "MAX_PAIRS": "the number of pairs must be between 1 and 10",
+    "MAX_PAIRS": "at most 10 pairs can be chosen",
+    "PAIR_NOT_SELECTABLE": "one of the chosen pairs is not a validated pair (see the Pairs page)",
     "LEVELS": "grid lines must be between 3 and 20",
     "AMOUNTS": "amounts must be zero or positive numbers",
     "GRIDS_EXCEED_INVESTED_CAP": "pairs times the amount per grid exceeds the invested cap",
     "ORDER_EXCEEDS_GRID": "the per-order cap exceeds the amount per grid",
     "RESERVE_BELOW_FLOOR": "the reserve must be at least 20% of invested plus reserve",
-    "CONFIG_UNCHANGED": "those numbers are already in force",
+    "CONFIG_UNCHANGED": "that configuration is already in force",
     "MODE_UNCHANGED": "that mode is already selected",
     "PAPER_NOT_IDLE": "the paper session must be PAUSED with no open paper orders",
 }
@@ -176,7 +177,7 @@ class BotView:
     live_armed: bool = False
     mode_buttons: tuple[tuple[str, str, bool], ...] = ()  # slug, label, selected
     mode_changeable: bool = False
-    trading_rows: tuple[tuple[str, int, int, str, str, str, str, int], ...] = ()
+    trading_rows: tuple[tuple[str, str, int, str, str, str, str, int], ...] = ()
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -268,7 +269,7 @@ def build_bot(o: Overview, *, can_manage: bool, message: str | None) -> BotView:
         trading_rows=tuple(
             (
                 t.mode.lower(),
-                t.max_pairs,
+                _chosen_text(dict(o.trading_pairs).get(t.mode, ())),
                 t.levels_per_grid,
                 str(t.quote_per_grid),
                 str(t.invested_cap),
@@ -279,6 +280,13 @@ def build_bot(o: Overview, *, can_manage: bool, message: str | None) -> BotView:
             for t in o.trading
         ),
     )
+
+
+def _chosen_text(pairs: tuple[tuple[str, str], ...]) -> str:
+    """The chosen pairs with their state: only an ACTIVE pair is traded."""
+    if not pairs:
+        return "none chosen"
+    return ", ".join(f"{product} ({STATE_WORDS.get(state, state)})" for product, state in pairs)
 
 
 def _capital_lines(o: Overview) -> tuple[tuple[str, str], ...]:
@@ -405,6 +413,23 @@ def mode_confirm(
     )
 
 
+STATE_WORDS: Final = {
+    "PAPER_ACTIVE": "active",
+    "PAPER_ELIGIBLE": "validated, not active",
+    "PAUSED": "paused",
+}
+
+
+PAIRS_NOTE: Final = {
+    "live": "In LIVE mode only the chosen pairs are traded, and only while they are active. "
+    "Choosing a pair does not activate it (Pairs page). A pair you remove while its grid is "
+    "running is wound down: its open buys are cancelled and what it holds is sold at its "
+    "grid line, never at market.",
+    "paper": "The paper trader still trades the one active pair, whatever is chosen here: for "
+    "PAPER the choice only sets how many pairs may be active.",
+}
+
+
 @dataclass(frozen=True)
 class TradingEditView:
     mode: str
@@ -412,10 +437,11 @@ class TradingEditView:
     values: tuple[tuple[str, str, str, str], ...]  # field name, label, current value, hint
     message_kind: str | None
     message_text: str | None
+    pairs: tuple[tuple[str, str, bool], ...] = ()  # product id, state in words, chosen now
+    pairs_note: str = ""
 
 
 EDIT_FIELDS: Final = (
-    ("pairs", "Pairs traded in parallel (1 to 10)", "How many pairs may have an active grid."),
     ("levels", "Grid lines per grid (3 to 20)", "A grid of N lines has N-1 buy/sell cells."),
     ("per_grid", "USDC invested per grid", "Per pair. Pairs times this stays within the cap."),
     ("invested", "Total invested cap (USDC)", "The most committed across every grid."),
@@ -424,9 +450,14 @@ EDIT_FIELDS: Final = (
 )
 
 
-def trading_edit(mode: str, cfg: TradingConfig, error: str | None = None) -> TradingEditView:
+def trading_edit(
+    mode: str,
+    cfg: TradingConfig,
+    chosen: tuple[str, ...] = (),
+    options: tuple[tuple[str, str], ...] = (),
+    error: str | None = None,
+) -> TradingEditView:
     current = {
-        "pairs": str(cfg.max_pairs),
         "levels": str(cfg.levels_per_grid),
         "per_grid": str(cfg.quote_per_grid),
         "invested": str(cfg.invested_cap),
@@ -440,6 +471,11 @@ def trading_edit(mode: str, cfg: TradingConfig, error: str | None = None) -> Tra
         tuple((name, label, current[name], hint) for name, label, hint in EDIT_FIELDS),
         kind,
         text,
+        tuple(
+            (product, STATE_WORDS.get(state, state), product in chosen)
+            for product, state in options
+        ),
+        PAIRS_NOTE[mode],
     )
 
 
@@ -451,12 +487,14 @@ def trading_confirm(
     reauth_active: bool,
     message: str | None,
     error: str | None = None,
+    chosen: tuple[str, ...] = (),
+    pick: tuple[str, ...] = (),
 ) -> ConfirmView:
     kind, text = flash(message)
     if error:
         kind, text = "error", f"Refused: {reason_text(error)}."
     rows = (
-        ("pairs", current.max_pairs, proposed.max_pairs),
+        ("pairs chosen", ", ".join(chosen) or "none", ", ".join(pick) or "none"),
         ("grid lines", current.levels_per_grid, proposed.levels_per_grid),
         ("USDC per grid", current.quote_per_grid, proposed.quote_per_grid),
         ("invested cap", current.invested_cap, proposed.invested_cap),
@@ -471,6 +509,7 @@ def trading_confirm(
         else "The paper session must be PAUSED with no open paper order.",
         "The bot never invests the reserve and never exceeds these caps, "
         "whatever the number of pairs.",
+        PAIRS_NOTE[mode],
     )
     return ConfirmView(
         f"Update trading configuration for {mode.upper()} mode",
@@ -483,7 +522,7 @@ def trading_confirm(
         kind,
         text,
         (
-            ("pairs", str(proposed.max_pairs)),
+            *(("pick", product) for product in pick),
             ("levels", str(proposed.levels_per_grid)),
             ("per_grid", str(proposed.quote_per_grid)),
             ("invested", str(proposed.invested_cap)),

@@ -37,9 +37,12 @@ def make_runner(safe: SafetyEnv, **kw: Any) -> LiveRunner:
     )
 
 
-def go_live(safe: SafetyEnv) -> None:
+def go_live(safe: SafetyEnv, *, choose: bool = True) -> None:
     safe.reauth.available = True
     assert safe.control.switch_mode(safe.ctx, safe.actor, "live", MODE_PHRASES["live"]).kind == "ok"
+    if choose:  # the pair is chosen for LIVE on the Bot page (only while the bot is PAUSED)
+        with safe.ctl.tx() as repos:
+            repos.safety.set_trading_pairs("LIVE", [safe.pair_id])
     safe.baseline("50")
     assert safe.recover().complete
     assert safe.act("resume").kind == "ok"
@@ -91,6 +94,15 @@ def test_the_runner_stays_idle_while_the_bot_is_paused_or_killed(safe: SafetyEnv
     assert safe.act("pause").kind == "ok"
     assert make_runner(safe).tick().reason == "BOT_NOT_RUNNING"
     assert not safe.fake.orders
+
+
+def test_an_active_pair_that_is_not_chosen_is_not_traded(
+    safe: SafetyEnv, fixed_grid: dict[str, Any], sql: Sql
+) -> None:
+    go_live(safe, choose=False)
+    result = make_runner(safe).tick()
+    assert result.ran and result.pairs == ()
+    assert not safe.fake.orders and sql("SELECT count(*) AS n FROM live_grids")[0]["n"] == 0
 
 
 def test_a_no_trade_decision_starts_nothing(safe: SafetyEnv, fixed_grid: dict[str, Any]) -> None:
@@ -171,6 +183,39 @@ def test_leaving_the_band_cancels_the_buys_and_stops_the_empty_grid(
         "state": "STOPPED",
         "stop_reason": "BREAKOUT",
     }
+
+
+def test_a_pair_removed_from_the_choice_has_its_grid_wound_down(
+    safe: SafetyEnv, fixed_grid: dict[str, Any], sql: Sql
+) -> None:
+    go_live(safe)
+    runner = make_runner(safe)
+    runner.tick()
+    runner.tick()
+    ids = [o.order_id for o in open_orders(safe)]
+    assert len(ids) == 2
+    # the operator unticks the pair (bot PAUSED), then resumes
+    assert safe.act("pause").kind == "ok"
+    with safe.ctl.tx() as repos:
+        repos.safety.set_trading_pairs("LIVE", [])
+    safe.clock.advance(1)
+    assert safe.reconciler.run("MANUAL").outcome == "OK"
+    assert safe.act("resume").kind == "ok"
+    safe.clock.advance(1)
+    result = runner.tick()
+    assert result.pairs[0].cancelled == 2  # the grid is not abandoned: its BUYs are cancelled
+    assert not [o for o in safe.fake.orders.values() if o.side == "SELL"]  # never a market sell
+    for order_id in ids:
+        safe.fake.finish_cancel(order_id)
+    safe.clock.advance(1)
+    stopped = runner.tick()
+    assert stopped.pairs[0].action == "GRID_STOPPED" and "PAIR_NOT_CHOSEN" in stopped.pairs[0].notes
+    assert sql("SELECT state, stop_reason FROM live_grids")[0] == {
+        "state": "STOPPED",
+        "stop_reason": "PAIR_NOT_CHOSEN",
+    }
+    safe.clock.advance(1)
+    assert runner.tick().pairs == () and len(safe.fake.orders) == 2  # and no new grid starts
 
 
 def test_a_failed_funds_read_places_nothing_new(

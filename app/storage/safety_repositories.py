@@ -6,6 +6,7 @@ may write what; this module never decides that."""
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -110,6 +111,18 @@ class LiveGridRow:
     created_at: datetime
     stopped_at: datetime | None = None
     stop_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class TradingPairRow:
+    """A pair chosen for a mode on the Bot page (or one that could be chosen)."""
+
+    pair_id: UUID
+    product_id: str
+    state: str
+
+
+SELECTABLE_STATES = ("PAPER_ELIGIBLE", "PAPER_ACTIVE", "PAUSED")  # validated pairs only
 
 
 @dataclass(frozen=True)
@@ -395,6 +408,44 @@ class SafetyRepository:
     def active_trading_config(self) -> TradingConfig:
         """The configuration of the active mode (BACKTEST and PAPER share the PAPER row)."""
         return self.trading_config("LIVE" if self.trading_state()[0] == "LIVE" else "PAPER")
+
+    def trading_pairs(self, mode: str) -> list[TradingPairRow]:
+        """The pairs selected for `mode`, by product id."""
+        rows = self._conn.execute(
+            "SELECT t.pair_id, pr.product_id, p.state FROM trading_pairs t "
+            "JOIN pairs p ON p.id = t.pair_id JOIN products pr ON pr.id = p.product_uuid "
+            "WHERE t.mode = %s ORDER BY pr.product_id",
+            (mode,),
+        ).fetchall()
+        return [TradingPairRow(**r) for r in rows]
+
+    def selectable_pairs(self) -> list[TradingPairRow]:
+        """Every pair that may be selected: validated and not disabled or archived."""
+        rows = self._conn.execute(
+            "SELECT p.id AS pair_id, pr.product_id, p.state FROM pairs p "
+            "JOIN products pr ON pr.id = p.product_uuid WHERE p.state = ANY(%s) "
+            "ORDER BY pr.product_id",
+            (list(SELECTABLE_STATES),),
+        ).fetchall()
+        return [TradingPairRow(**r) for r in rows]
+
+    def set_trading_pairs(self, mode: str, pair_ids: Sequence[UUID]) -> None:
+        """Replace the selection of `mode` (the database refuses it unless the bot is PAUSED)."""
+        wanted = set(pair_ids)
+        current = {
+            r["pair_id"]
+            for r in self._conn.execute(
+                "SELECT pair_id FROM trading_pairs WHERE mode = %s", (mode,)
+            ).fetchall()
+        }
+        for pair_id in sorted(current - wanted):
+            self._conn.execute(
+                "DELETE FROM trading_pairs WHERE mode = %s AND pair_id = %s", (mode, pair_id)
+            )
+        for pair_id in sorted(wanted - current):
+            self._conn.execute(
+                "INSERT INTO trading_pairs (mode, pair_id) VALUES (%s, %s)", (mode, pair_id)
+            )
 
     def update_trading_config(self, cfg: TradingConfig, now: datetime) -> bool:
         """Compare-and-set on the version; False means someone else changed it first."""

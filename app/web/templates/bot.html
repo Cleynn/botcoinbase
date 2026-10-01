@@ -35,11 +35,11 @@
 
 <section aria-labelledby="tc-h">
   <h2 id="tc-h">Trading configuration</h2>
-  <p>How many pairs trade in parallel, how many grid lines and how much each grid invests, the total that may be invested and the reserve that never is.</p>
+  <p>Which pairs are chosen, how many grid lines and how much each grid invests, the total that may be invested and the reserve that never is. In LIVE mode only a chosen pair is traded, and only while it is active; the paper trader still trades the one active pair.</p>
   <div class="table-wrap" tabindex="0" role="region" aria-label="Trading configuration table, scrolls sideways on narrow screens">
   <table>
     <caption>Trading configuration (USDC)</caption>
-    <thead><tr><th scope="col">Mode</th><th scope="col">Pairs</th><th scope="col">Grid lines</th><th scope="col">Per grid</th><th scope="col">Invested cap</th><th scope="col">Reserve</th><th scope="col">Largest order</th>{% if view.can_manage %}<th scope="col">Change</th>{% endif %}</tr></thead>
+    <thead><tr><th scope="col">Mode</th><th scope="col">Pairs chosen</th><th scope="col">Grid lines</th><th scope="col">Per grid</th><th scope="col">Invested cap</th><th scope="col">Reserve</th><th scope="col">Largest order</th>{% if view.can_manage %}<th scope="col">Change</th>{% endif %}</tr></thead>
     <tbody>
     {% for mode, pairs, levels, per_grid, invested, reserve, per_order, version in view.trading_rows %}
       <tr><th scope="row">{{ mode | upper }}</th><td>{{ pairs }}</td><td>{{ levels }}</td><td>{{ per_grid }}</td><td>{{ invested }}</td><td>{{ reserve }}</td><td>{{ per_order }}</td>

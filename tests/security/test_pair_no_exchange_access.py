@@ -121,12 +121,18 @@ def test_no_pair_route_can_create_or_cancel_an_order(app: Any) -> None:
         "/bot/mode/{mode}/reauth",
         "/bot/mode/{mode}/confirm",
     }
+    # DEC-029 added the Coinbase page: two GET-only views of what the host feed stored. The web
+    # process still never contacts the exchange and these routes accept no input.
+    feed_views = {"/coinbase", "/partials/coinbase"}
     assert not [
         p
         for p in paths
-        if p not in bot_controls
+        if p not in bot_controls | feed_views
         and re.search(r"order|fill|account|balance|exchange|coinbase|kill|bot", p)
     ]
+    for route in walk_routes(app):
+        if route.path in feed_views:
+            assert route.methods <= {"GET", "HEAD"}, route.path
     assert not [p for p in bot_controls if re.search(r"order|fill|account|balance|exchange", p)]
     for route in walk_routes(app):
         if route.path.startswith("/pairs"):

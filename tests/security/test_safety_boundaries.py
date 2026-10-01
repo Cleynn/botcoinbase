@@ -299,6 +299,7 @@ def test_all_safety_sql_writes_target_only_safety_tables() -> None:
         "live_grids",  # Phase 10: the grids the live runner manages (host-written)
         "trading_config",  # Phase 10: per-mode limits, edited only while the bot is PAUSED
         "trading_state",  # Phase 10: active mode, changed only while the bot is PAUSED
+        "trading_pairs",  # the pairs chosen per mode, changed only while the bot is PAUSED
     }, writes
     assert "TRUNCATE" not in source and "DROP" not in source
 

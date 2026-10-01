@@ -28,6 +28,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "proposal",
         "safety",
         "live",
+        "feed",
     ):
         from app.batch_cli import main as batch_main
 

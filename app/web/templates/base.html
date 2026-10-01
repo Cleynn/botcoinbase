@@ -32,6 +32,7 @@
         <li><a href="/" {% if active|default("") == "overview" %}aria-current="page"{% endif %}>Overview</a></li>
         <li><a href="/pairs" {% if active|default("") == "pairs" %}aria-current="page"{% endif %}>Pairs</a></li>
         <li><a href="/bot" {% if active|default("") == "bot" %}aria-current="page"{% endif %}>Bot</a></li>
+        <li><a href="/coinbase" {% if active|default("") == "exchange" %}aria-current="page"{% endif %}>Coinbase</a></li>
         <li><a href="/reports" {% if active|default("") == "reports" %}aria-current="page"{% endif %}>Reports</a></li>
         {% for item in disabled_nav %}
         <li><span class="nav-later" aria-disabled="true">{{ item }} <small>(not available yet)</small></span></li>

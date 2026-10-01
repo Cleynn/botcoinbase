@@ -23,6 +23,8 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("POST", "/logout"): "logout",
     ("GET", "/"): "view_dashboard",
     ("GET", "/partials/status"): "view_dashboard",
+    ("GET", "/coinbase"): "view_bot",
+    ("GET", "/partials/coinbase"): "view_bot",
     ("GET", "/security"): "view_own_security",
     ("POST", "/security/password"): "change_own_password",
     ("POST", "/security/reauth"): "reauthenticate",

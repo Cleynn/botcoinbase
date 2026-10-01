@@ -1,0 +1,59 @@
+<section id="exchange-data" aria-live="polite"
+         hx-get="/partials/coinbase" hx-trigger="every 30s" hx-swap="outerHTML">
+  <p class="notice"><span class="badge{% if view.state != 'FRESH' %} badge-untrusted{% endif %}">{{ view.state }}</span> {{ view.headline }}</p>
+  {% if view.transfer_warning %}
+  <p class="notice"><span class="badge badge-untrusted">WARNING</span> This API key can transfer funds. Replace it with a key that has View and Trade only.</p>
+  {% endif %}
+  <dl class="tiles">
+    <div class="tile"><dt>Last successful read</dt><dd>{{ view.updated }}</dd></div>
+    <div class="tile"><dt>Age</dt><dd>{{ view.age }}</dd></div>
+    <div class="tile"><dt>API key permissions</dt><dd>{{ view.permissions }}</dd></div>
+  </dl>
+
+  <h2>Balances</h2>
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Coinbase balances, USDC first</caption>
+      <thead><tr><th scope="col">Currency</th><th scope="col">Available</th><th scope="col">On hold</th><th scope="col">Total</th></tr></thead>
+      <tbody>
+      {% for b in view.balances %}
+        <tr><td>{{ b.currency }}</td><td>{{ b.available }}</td><td>{{ b.hold }}</td><td>{{ b.total }}</td></tr>
+      {% else %}
+        <tr><td colspan="4">No balance stored.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Orders, last 7 days</h2>
+  {% if view.totals[1] > view.max_rows %}<p>Showing the newest {{ view.max_rows }} of {{ view.totals[1] }}.</p>{% endif %}
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Coinbase orders of the last 7 days, newest first</caption>
+      <thead><tr><th scope="col">Created</th><th scope="col">Product</th><th scope="col">Side</th><th scope="col">Status</th><th scope="col">Price</th><th scope="col">Quantity</th><th scope="col">Filled</th><th scope="col">Order</th></tr></thead>
+      <tbody>
+      {% for o in view.orders %}
+        <tr><td>{{ o.created }}</td><td>{{ o.product }}</td><td>{{ o.side }}</td><td><span class="badge">{{ o.status }}</span></td><td>{{ o.price }}</td><td>{{ o.quantity }}</td><td>{{ o.filled }}</td><td><code>{{ o.order_id }}</code></td></tr>
+      {% else %}
+        <tr><td colspan="8">No order in the last 7 days.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Fills, last 7 days</h2>
+  {% if view.totals[2] > view.max_rows %}<p>Showing the newest {{ view.max_rows }} of {{ view.totals[2] }}.</p>{% endif %}
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Coinbase fills of the last 7 days, newest first</caption>
+      <thead><tr><th scope="col">Time</th><th scope="col">Product</th><th scope="col">Side</th><th scope="col">Price</th><th scope="col">Size</th><th scope="col">Fee</th><th scope="col">Liquidity</th></tr></thead>
+      <tbody>
+      {% for f in view.fills %}
+        <tr><td>{{ f.when }}</td><td>{{ f.product }}</td><td>{{ f.side }}</td><td>{{ f.price }}</td><td>{{ f.size }}</td><td>{{ f.fee }}</td><td>{{ f.liquidity }}</td></tr>
+      {% else %}
+        <tr><td colspan="7">No fill in the last 7 days.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

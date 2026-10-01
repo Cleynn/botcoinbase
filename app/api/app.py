@@ -14,7 +14,18 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import constants
-from app.api import admin, auth, bot, dashboard, health, pairs, proposals, reports, review
+from app.api import (
+    admin,
+    auth,
+    bot,
+    dashboard,
+    exchange,
+    health,
+    pairs,
+    proposals,
+    reports,
+    review,
+)
 from app.api.dependencies import Services, access_guard, csrf_guard
 from app.api.errors import BodySizeLimitMiddleware, register_error_handlers
 from app.api.limits import BODY_LIMIT_OVERRIDES
@@ -200,5 +211,6 @@ def create_app(
     app.include_router(review.router)
     app.include_router(proposals.router)
     app.include_router(bot.router)
+    app.include_router(exchange.router)
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     return app

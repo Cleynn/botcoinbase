@@ -15,6 +15,7 @@ edge_grafana (internal): caddy, grafana
 ```
 
 - Only `edge_public` has outbound access, and only Caddy is attached to it. The app has **no egress**.
+- Coinbase account data reaches the web interface through the database only: the host `feed` service reads the exchange (GET requests, through the allowlist proxy) and stores it; the app selects it for the Coinbase page (DEC-029).
 - No host ports other than Caddy's 8080 and 444, bound to 127.0.0.1; the host's Apache owns 80/443 and proxies both hostnames to them (`infra/apache/tradingdots.conf`, DEC-027). Enforced by `scripts/verify_security_config.py` and tests.
 - The app stores users, sessions, login attempts and the audit log in PostgreSQL. Redis is deployed but unused.
 - Roles: `tradingdots` (owner, used only by `migrate`), `td_app` (web), `td_ctl` (host CLI). See `app/storage/migrations/0001_auth.sql` for the exact grants.

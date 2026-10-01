@@ -28,6 +28,7 @@ from app.storage.models import (
 )
 
 if TYPE_CHECKING:
+    from app.storage.feed_repositories import FeedRepository
     from app.storage.market_repositories import MarketRepository, ResultRepository
     from app.storage.pair_repositories import PairRepository, ProductRepository
     from app.storage.paper_repositories import PaperRepository
@@ -416,9 +417,11 @@ class Repos:
     export: ExportRepository
     proposals: ProposalRepository
     safety: SafetyRepository
+    feed: FeedRepository
 
     @classmethod
     def bind(cls, conn: Conn) -> Repos:
+        from app.storage.feed_repositories import FeedRepository
         from app.storage.market_repositories import MarketRepository, ResultRepository
         from app.storage.pair_repositories import PairRepository, ProductRepository
         from app.storage.paper_repositories import PaperRepository
@@ -441,4 +444,5 @@ class Repos:
             ExportRepository(conn),
             ProposalRepository(conn),
             SafetyRepository(conn),
+            FeedRepository(conn),
         )

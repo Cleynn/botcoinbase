@@ -13,6 +13,7 @@ from app.api.dependencies import get_services, require_permission
 from app.domain.models import AuthContext
 from app.domain.permissions import Permission, has_permission
 from app.web.bot_views import bot_rows
+from app.web.exchange_views import feed_rows
 from app.web.report_views import market_rows
 from app.web.view_models import build_dashboard
 
@@ -48,6 +49,11 @@ def dashboard(
             view = replace(view, known=view.known + bot_rows(repos, services.clock.now()))
     except Exception:  # noqa: BLE001
         logger.error("market summary unavailable")
+    try:  # what the host feed stored; a problem here must never break the dashboard
+        with services.storage.tx() as repos:
+            view = replace(view, known=view.known + feed_rows(repos, services.clock.now()))
+    except Exception:  # noqa: BLE001
+        logger.error("exchange feed summary unavailable")
     return services.renderer.html(
         "dashboard.html", auth=ctx, active="overview", view=view, now=view.now
     )

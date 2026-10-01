@@ -5,6 +5,16 @@
 {% if view.message_text %}<p class="msg {{ view.message_kind }}" role="alert">{{ view.message_text }}</p>{% endif %}
 <p class="notice">Nothing is changed by this form: the next page shows the effect and asks for your password and a typed phrase. The bot must be PAUSED. The reserve is never invested and the caps always apply.</p>
 <form method="get" action="{{ view.action }}" class="stacked">
+  <fieldset>
+    <legend>Pairs chosen for {{ view.mode | upper }} mode (at most 10)</legend>
+    {% for product, state, chosen in view.pairs %}
+    <p><input id="p_{{ product }}" name="pick" type="checkbox" value="{{ product }}"{% if chosen %} checked{% endif %}>
+       <label for="p_{{ product }}">{{ product }} <small>({{ state }})</small></label></p>
+    {% else %}
+    <p>No validated pair yet. Add a pair and validate it on the <a href="/pairs">Pairs page</a>; it can then be chosen here.</p>
+    {% endfor %}
+    <p><small>{{ view.pairs_note }} The amount per grid times the number of chosen pairs must stay within the invested cap.</small></p>
+  </fieldset>
   {% for name, label, value, hint in view.values %}
   <p><label for="f_{{ name }}">{{ label }}</label>
      <input id="f_{{ name }}" name="{{ name }}" type="text" inputmode="decimal" autocomplete="off" maxlength="18" value="{{ value }}" required>

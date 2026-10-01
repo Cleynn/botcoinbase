@@ -30,19 +30,28 @@ def test_status_and_config_show(safe: SafetyEnv, db: TestDb) -> None:
     out: list[str] = []
     assert run(safe, db, ["status"], out) == 0
     text = "\n".join(out)
-    assert "mode=PAPER live_armed=False" in text and "LIVE configuration: pairs=1" in text
+    assert "mode=PAPER live_armed=False" in text and "LIVE configuration: pairs=none" in text
     out.clear()
-    assert run(safe, db, ["config"], out) == 0 and out[0].startswith("pairs=1 levels=3")
+    assert run(safe, db, ["config"], out) == 0 and out[0].startswith("pairs=none levels=3")
 
 
 def test_config_edit_validates_and_needs_the_bot_paused(safe: SafetyEnv, db: TestDb) -> None:
     out: list[str] = []
-    args = ["config", "--pairs", "3", "--levels", "6", "--per-grid", "20"]
+    args = ["config", "--pairs", "btc-usdc", "--levels", "6", "--per-grid", "20"]
     args += ["--invested", "60", "--reserve", "20", "--per-order", "10"]
     assert run(safe, db, args, out) == 0
-    assert out[0].startswith("updated: pairs=3 levels=6")
+    assert out[0].startswith("updated: pairs=BTC-USDC levels=6")
     out.clear()
-    assert run(safe, db, ["config", "--pairs", "11"], out) == 1 and "MAX_PAIRS" in out[0]
+    assert run(safe, db, ["status"], out) == 0 and "pairs=BTC-USDC" in out[1]
+    out.clear()
+    many = ",".join(f"C{i}-USDC" for i in range(11))
+    assert run(safe, db, ["config", "--pairs", many], out) == 1 and "MAX_PAIRS" in out[0]
+    out.clear()
+    assert run(safe, db, ["config", "--pairs", "DOGE-USDC"], out) == 1
+    assert "PAIR_NOT_SELECTABLE" in out[0]
+    out.clear()
+    assert run(safe, db, ["config", "--pairs", "none"], out) == 0
+    assert out[0].startswith("updated: pairs=none")
     out.clear()
     assert run(safe, db, ["config", "--reserve", "1"], out) == 1 and "RESERVE_BELOW_FLOOR" in out[0]
     out.clear()

@@ -168,14 +168,24 @@ class LiveRunner:
             return TickResult(False, exc.code)
         accounts = self._read_accounts()
         with self._storage.tx() as repos:
+            # only the pairs chosen for LIVE on the Bot page, and only while they are active
+            chosen = {r.pair_id for r in repos.safety.trading_pairs("LIVE")}
             pairs = [
                 p
                 for p in repos.pairs.in_states((PairState.PAPER_ACTIVE,))
-                if p.state is PairState.PAPER_ACTIVE
+                if p.state is PairState.PAPER_ACTIVE and p.id in chosen
             ][: cfg.max_pairs]
+            # A grid whose pair is no longer chosen (or no longer active) is never abandoned: it is
+            # wound down (open BUYs cancelled, held cells sold at their line, then stopped).
+            trading = {p.id for p in pairs}
+            leftover = [g for g in repos.safety.live_grids() if g.pair_id not in trading]
         outcomes: list[PairOutcome] = []
         for pair in pairs:
             outcomes.append(self._pair(pair.id, pair.product_id, cfg, fee, accounts))
+        for grid in leftover:
+            outcomes.append(
+                self._pair(grid.pair_id, grid.product_id, cfg, fee, accounts, wind_down=True)
+            )
         return TickResult(True, None, tuple(outcomes))
 
     def _read_accounts(self) -> tuple[BalanceLike, ...] | None:
@@ -192,6 +202,8 @@ class LiveRunner:
         cfg: TradingConfig,
         fee: Decimal,
         accounts: tuple[BalanceLike, ...] | None,
+        *,
+        wind_down: bool = False,
     ) -> PairOutcome:
         notes: list[str] = []
         if self._refresh is not None:
@@ -229,10 +241,14 @@ class LiveRunner:
             return PairOutcome(product_id, "SKIPPED", notes=(*notes, exc.code))
         price = candles[-1].close
         if not grids:
+            if wind_down:
+                return PairOutcome(product_id, "SKIPPED", notes=(*notes, "PAIR_NOT_CHOSEN"))
             return self._start(
                 pair_id, product_id, cfg, fee, accounts, candles, rules, committed, tuple(notes)
             )
-        return self._manage(pair_id, product_id, grids[-1], rules, price, accounts, tuple(notes))
+        return self._manage(
+            pair_id, product_id, grids[-1], rules, price, accounts, tuple(notes), wind_down
+        )
 
     # ------------------------------------------------------------------ start a grid
     def _start(
@@ -343,12 +359,14 @@ class LiveRunner:
         price: Decimal,
         accounts: tuple[BalanceLike, ...] | None,
         notes: tuple[str, ...],
+        wind_down: bool = False,
     ) -> PairOutcome:
         now = self._clock.now()
         with self._storage.tx() as repos:
             cells = self._cells(repos, grid)
             pair = repos.pairs.get(pair_id)
-            active = pair is not None and pair.state is PairState.PAPER_ACTIVE
+            pair_active = pair is not None and pair.state is PairState.PAPER_ACTIVE
+            active = pair_active and not wind_down  # no new BUY for a pair that is not traded
         buffer = self._settings.pair_policy.strategy.breakout_buffer
         margin = (grid.upper - grid.lower) * buffer
         inside = active and (grid.lower + margin < price < grid.upper - margin)
@@ -379,7 +397,13 @@ class LiveRunner:
             with self._storage.tx() as repos:
                 fresh = self._cells(repos, grid)
                 if all(not c.pending and c.held < rules.base_min_size for c in fresh):
-                    reason = "BREAKOUT" if active else "PAIR_NOT_ACTIVE"
+                    reason = (
+                        "BREAKOUT"
+                        if active
+                        else "PAIR_NOT_CHOSEN"
+                        if pair_active
+                        else "PAIR_NOT_ACTIVE"
+                    )
                     if repos.safety.stop_live_grid(grid.id, reason, self._clock.now()):
                         self._audit.record(
                             repos,

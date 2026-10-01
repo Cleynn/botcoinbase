@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class _Form(BaseModel):
@@ -114,8 +114,11 @@ class BotProfileConfirm(_Form):
 _AMOUNT = Field(pattern=r"^[0-9]{1,9}(\.[0-9]{1,8})?$")
 
 
+PairPick = Annotated[str, StringConstraints(pattern=r"^[A-Z0-9]{1,20}-USDC$")]
+
+
 class _TradingNumbers(_Form):
-    pairs: int = Field(ge=1, le=10)
+    pick: list[PairPick] = Field(default_factory=list, max_length=10)  # the pairs chosen
     levels: int = Field(ge=3, le=20)
     per_grid: str = _AMOUNT
     invested: str = _AMOUNT

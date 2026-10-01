@@ -32,13 +32,13 @@ def connect(db: TestDb, role: str) -> psycopg.Connection[Any]:
 
 # ------------------------------------------------------------------ migrations and schema guard
 def test_head_version_and_meta_agree(sql: Callable[..., Any]) -> None:
-    assert sql("SELECT version FROM schema_meta")[0]["version"] == head_version() == 12
+    assert sql("SELECT version FROM schema_meta")[0]["version"] == head_version() == 14
 
 
 def test_migrate_is_idempotent(db: TestDb, role_passwords: tuple[str, str]) -> None:
     assert (
         migrate(db.owner_target(), app_password=role_passwords[0], ctl_password=role_passwords[1])
-        == 12
+        == 14
     )
 
 
@@ -50,7 +50,7 @@ def test_rollback_and_remigrate_round_trip(
     assert sql("SELECT to_regclass('public.pairs') AS t")[0]["t"] is None
     assert (
         migrate(db.owner_target(), app_password=role_passwords[0], ctl_password=role_passwords[1])
-        == 12
+        == 14
     )
     assert sql("SELECT count(*) AS n FROM allowed_transitions")[0]["n"] > 0
     assert sql("SELECT count(*) AS n FROM audit_head")[0]["n"] == 1
@@ -60,13 +60,13 @@ def test_schema_guard_refuses_an_older_schema(
     storage: Storage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     storage.check_schema()
-    monkeypatch.setattr(database, "head_version", lambda: 13)
+    monkeypatch.setattr(database, "head_version", lambda: 15)
     with pytest.raises(SchemaError, match="older"):
         storage.check_schema()
 
 
 def test_schema_guard_refuses_a_newer_schema(storage: Storage, sql: Callable[..., Any]) -> None:
-    sql("UPDATE schema_meta SET version = 13")
+    sql("UPDATE schema_meta SET version = 15")
     with pytest.raises(SchemaError, match="newer"):
         storage.check_schema()
 
@@ -74,13 +74,13 @@ def test_schema_guard_refuses_a_newer_schema(storage: Storage, sql: Callable[...
 def test_migrate_refuses_to_run_against_a_newer_schema(
     db: TestDb, role_passwords: tuple[str, str], sql: Callable[..., Any]
 ) -> None:
-    sql("UPDATE schema_meta SET version = 14")
+    sql("UPDATE schema_meta SET version = 16")
     with pytest.raises(SchemaError):
         migrate(db.owner_target(), app_password=role_passwords[0], ctl_password=role_passwords[1])
 
 
 def test_migration_files_are_contiguous() -> None:
-    assert list(database.migration_files()) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    assert list(database.migration_files()) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 
 
 def test_cli_rollback_requires_explicit_acknowledgement(
@@ -484,8 +484,8 @@ def test_an_applied_migration_that_was_edited_is_refused(
     shutil.copytree(database.MIGRATIONS_DIR, copy)
     monkeypatch.setattr(database, "MIGRATIONS_DIR", copy)
     args = {"app_password": role_passwords[0], "ctl_password": role_passwords[1]}
-    assert migrate(db.owner_target(), **args) == 12  # records (or trusts once) every checksum
-    assert migrate(db.owner_target(), **args) == 12  # unchanged files: fine
+    assert migrate(db.owner_target(), **args) == 14  # records (or trusts once) every checksum
+    assert migrate(db.owner_target(), **args) == 14  # unchanged files: fine
     with (copy / "0006_safety.sql").open("a", encoding="utf-8") as handle:
         handle.write("\n-- an edit after the migration was applied\n")
     with pytest.raises(SchemaError, match="0006 was modified after it was applied"):
@@ -495,11 +495,11 @@ def test_an_applied_migration_that_was_edited_is_refused(
 def test_the_checksums_are_owner_only_and_follow_a_rollback(
     db: TestDb, role_passwords: tuple[str, str], sql: Callable[..., Any]
 ) -> None:
-    assert sql("SELECT count(*) AS n FROM schema_migrations")[0]["n"] == 12
+    assert sql("SELECT count(*) AS n FROM schema_migrations")[0]["n"] == 14
     assert rollback(db.owner_target(), to_version=6) == 6
     assert sql("SELECT max(version) AS v FROM schema_migrations")[0]["v"] == 6
     migrate(db.owner_target(), app_password=role_passwords[0], ctl_password=role_passwords[1])
-    assert sql("SELECT count(*) AS n FROM schema_migrations")[0]["n"] == 12
+    assert sql("SELECT count(*) AS n FROM schema_migrations")[0]["n"] == 14
     for role in ("td_app", "td_ctl"):
         with connect(db, role) as conn, pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("SELECT * FROM schema_migrations")
