@@ -148,6 +148,72 @@ def confirm(
     )
 
 
+# ---------------------------------------------------------------- trading mode
+TradingMode = Literal["backtest", "paper", "live"]
+
+
+def _mode_page(
+    request: Request,
+    ctx: AuthContext,
+    mode: str,
+    message: str | None,
+    status: int = 200,
+    error: str | None = None,
+) -> Response:
+    services = get_services(request)
+    view = views.mode_confirm(
+        mode, reauth_active=services.bot.reauth_active(ctx), message=message, error=error
+    )
+    return services.renderer.html("bot_confirm.html", status, auth=ctx, active="bot", view=view)
+
+
+@router.get("/bot/mode/{mode}/request")
+def mode_request(
+    request: Request,
+    mode: TradingMode,
+    ctx: Annotated[AuthContext, Depends(_admin)],
+    msg: Annotated[str | None, Query(max_length=32)] = None,
+) -> Response:
+    return _mode_page(request, ctx, mode, msg)
+
+
+@router.post("/bot/mode/{mode}/reauth")
+def mode_reauth(
+    request: Request,
+    mode: TradingMode,
+    form: Annotated[ReviewPlainReauth, Form()],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+) -> Response:
+    code = _reauth(request, ctx, form.password)
+    if code == "reauth_ok":
+        return RedirectResponse(f"/bot/mode/{mode}/request?msg={code}", status_code=303)
+    return _mode_page(request, ctx, mode, code, 429 if code == "throttled" else 400)
+
+
+@router.post("/bot/mode/{mode}/confirm")
+def mode_confirm(
+    request: Request,
+    mode: TradingMode,
+    form: Annotated[ReviewPlainConfirm, Form()],
+    ctx: Annotated[AuthContext, Depends(_admin)],
+) -> Response:
+    outcome: Outcome = get_services(request).bot.switch_mode(
+        ctx, _actor(request, ctx), mode, form.confirmation
+    )
+    if outcome.kind == "ok":
+        return RedirectResponse(f"/bot?msg=mode_{mode}", status_code=303)
+    if outcome.kind in ("phrase_mismatch", "reauth_required", "invalid"):
+        return _mode_page(request, ctx, mode, outcome.kind, _STATUS[outcome.kind])
+    return _mode_page(
+        request,
+        ctx,
+        mode,
+        None,
+        _STATUS.get(outcome.kind, 409),
+        error=outcome.reasons[0] if outcome.reasons else "GUARD_REFUSED",
+    )
+
+
 # ---------------------------------------------------------------- capital profile (PAPER / LIVE)
 Mode = Literal["paper", "live"]
 _PROFILE_QUERY = Query(pattern=r"^[a-z][a-z0-9_]{1,23}$")

@@ -56,7 +56,8 @@ def running_with(safe: SafetyEnv, db: TestDb, profile: str, usdc: str) -> None:
 
 # ------------------------------------------------------------------ the table
 def test_the_database_profiles_equal_the_code_registry(sql: Sql) -> None:
-    rows = {r["name"]: r for r in sql("SELECT * FROM capital_profiles")}
+    # 'custom' is a placeholder: its real limits come from trading_config (migration 0010)
+    rows = {r["name"]: r for r in sql("SELECT * FROM capital_profiles WHERE name <> 'custom'")}
     assert set(rows) == set(PROFILES)
     for name, p in PROFILES.items():
         r = rows[name]

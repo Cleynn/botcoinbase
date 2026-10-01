@@ -22,6 +22,17 @@
   <ul>{% for r in view.gate_reasons %}<li>{{ r }}</li>{% endfor %}</ul>
 </section>
 
+<section aria-labelledby="md-h">
+  <h2 id="md-h">Trading mode</h2>
+  <p>Active mode: <strong>{{ view.trading_mode }}</strong>. Live trading armed by the host: <strong>{{ "yes" if view.live_armed else "no" }}</strong>. Choosing a mode never places an order; LIVE orders also need the host arming.</p>
+  <ul class="mode-options">
+  {% for slug, label, selected in view.mode_buttons %}
+    <li>{% if selected %}<strong>{{ label }}</strong> (active){% elif view.can_manage and view.mode_changeable %}<a class="button" role="button" href="/bot/mode/{{ slug }}/request">Switch to {{ label }}</a>{% else %}{{ label }}{% endif %}</li>
+  {% endfor %}
+  </ul>
+  {% if view.can_manage and not view.mode_changeable %}<p>Pause the bot first to change the mode.</p>{% endif %}
+</section>
+
 <section aria-labelledby="cp-h">
   <h2 id="cp-h">Capital</h2>
   <p>Capital limits come from a named profile. The bot sizes every grid from the USDC actually available (the exchange's balance, or the paper ledger in paper mode) after the protected reserve, never from a fixed amount. PAPER profile: <strong>{{ view.paper_profile }}</strong>. LIVE profile (recorded only; live is blocked): <strong>{{ view.live_profile }}</strong>.</p>

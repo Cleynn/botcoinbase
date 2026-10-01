@@ -400,6 +400,11 @@ class SafetyRepository:
         )
         return cur.rowcount == 1
 
+    def paper_side_idle(self) -> bool:
+        """The database's own answer (paper session PAUSED and no open paper order)."""
+        row = self._conn.execute("SELECT td_paper_side_idle() AS idle").fetchone()
+        return bool(row and row["idle"])
+
     def set_active_mode(self, mode: str, expected_version: int, now: datetime) -> bool:
         cur = self._conn.execute(
             "UPDATE trading_state SET active_mode = %s, version = version + 1, updated_at = %s "

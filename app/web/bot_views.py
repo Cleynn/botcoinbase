@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Final
 
 from app.capital.profiles import PROFILES
-from app.safety.control import PHRASES, PROFILE_PHRASES, Overview
+from app.safety.control import MODE_PHRASES, PHRASES, PROFILE_PHRASES, Overview
 from app.safety.live_gate import BLOCKERS, STATUS_TEXT
 from app.safety.types import BLOCK_REASONS
 from app.storage.repositories import Repos
@@ -16,7 +16,8 @@ from app.web.view_models import fmt
 
 NOTICE: Final = (
     "This page cannot create, submit, change or sell any order. It can pause the bot, cancel "
-    "orders the bot itself created, and activate the kill switch. Live trading is blocked."
+    "orders the bot itself created, activate the kill switch and choose the trading mode. "
+    "Choosing LIVE places nothing: the host must also arm live trading."
 )
 SLUGS: Final[dict[str, str]] = {
     "pause": "pause",
@@ -43,6 +44,9 @@ REASON_TEXT: Final[dict[str, str]] = {
     "PROFILE_UNCHANGED": "that profile is already selected",
     "PROFILE": "that capital profile does not exist",
     "PROFILE_NOT_APPROVED": "only the pilot profile is approved in production",
+    "MODE": "that mode does not exist",
+    "MODE_UNCHANGED": "that mode is already selected",
+    "PAPER_NOT_IDLE": "the paper session must be PAUSED with no open paper orders",
 }
 
 ACTION_TEXT: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
@@ -95,6 +99,16 @@ MESSAGES: Final[dict[str, tuple[str, str]]] = {
     "phrase_mismatch": ("error", "The confirmation phrase did not match exactly."),
     "invalid": ("error", "The request was invalid."),
     "profile_paper": ("success", "The PAPER capital profile was updated."),
+    "mode_backtest": (
+        "success",
+        "Mode set to BACKTEST. Nothing was started and no order was placed.",
+    ),
+    "mode_paper": ("success", "Mode set to PAPER. Nothing was started and no order was placed."),
+    "mode_live": (
+        "success",
+        "Mode set to LIVE. No order is placed until the host arms live trading; "
+        "the kill switch, reserve and caps still apply.",
+    ),
     "profile_live": (
         "success",
         "The LIVE capital profile was recorded. LIVE TRADING stays BLOCKED.",
@@ -139,7 +153,18 @@ class BotView:
     live_profile: str = ""
     capital_lines: tuple[tuple[str, str], ...] = ()
     profile_changeable: bool = False
+    trading_mode: str = "PAPER"
+    live_armed: bool = False
+    mode_buttons: tuple[tuple[str, str, bool], ...] = ()  # slug, label, selected
+    mode_changeable: bool = False
     extra: dict[str, str] = field(default_factory=dict)
+
+
+MODE_LABELS: Final[dict[str, str]] = {
+    "backtest": "BACKTEST (historical data, no orders)",
+    "paper": "PAPER (simulated orders on live prices)",
+    "live": "LIVE (real orders on Coinbase, needs host arming)",
+}
 
 
 def _ts(moment: datetime | None) -> str:
@@ -214,6 +239,12 @@ def build_bot(o: Overview, *, can_manage: bool, message: str | None) -> BotView:
         live_profile=c.live_profile,
         capital_lines=_capital_lines(o),
         profile_changeable=can_manage and c.bot_state == "PAUSED",
+        trading_mode=o.trading_mode,
+        live_armed=o.live_armed,
+        mode_buttons=tuple(
+            (slug, label, slug.upper() == o.trading_mode) for slug, label in MODE_LABELS.items()
+        ),
+        mode_changeable=can_manage and c.bot_state == "PAUSED",
     )
 
 
@@ -299,6 +330,45 @@ def bot_rows(repos: Repos, now: datetime) -> tuple[tuple[str, str], ...]:
         ("Circuit breaker state", c.breaker_state),
         ("Startup recovery", c.recovery_state),
         ("Reconciliation status", recon),
+    )
+
+
+MODE_LINES: Final[dict[str, tuple[str, ...]]] = {
+    "backtest": ("BACKTEST replays stored historical candles. It never places an order.",),
+    "paper": (
+        "PAPER simulates orders against live prices with the paper ledger. No real order exists.",
+    ),
+    "live": (
+        "LIVE means the host may place real post-only orders on Coinbase. Switching the mode "
+        "places nothing: the host must also arm live trading (time limited, cancelled by the kill "
+        "switch). The protected reserve, caps, fund checks and the kill switch always apply.",
+    ),
+}
+
+
+def mode_confirm(
+    mode: str,
+    *,
+    reauth_active: bool,
+    message: str | None,
+    error: str | None = None,
+) -> ConfirmView:
+    kind, text = flash(message)
+    if error:
+        kind, text = "error", f"Refused: {reason_text(error)}."
+    return ConfirmView(
+        f"Switch to {mode.upper()} mode",
+        NOTICE,
+        (
+            *MODE_LINES[mode],
+            "The bot must be PAUSED and the paper session idle (no open paper order).",
+        ),
+        (),
+        f"/bot/mode/{mode}",
+        MODE_PHRASES[mode],
+        reauth_active,
+        kind,
+        text,
     )
 
 

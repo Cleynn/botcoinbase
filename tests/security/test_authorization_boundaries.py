@@ -62,6 +62,9 @@ EXPECTED: dict[tuple[str, str], str] = {
     ("POST", "/bot/{slug}/reauth"): "manage_bot",
     ("POST", "/bot/{slug}/confirm"): "manage_bot",
     # Phase 9: choosing the capital profile for a mode (ADMIN, reauth, typed phrase, bot PAUSED)
+    ("GET", "/bot/mode/{mode}/request"): "manage_bot",
+    ("POST", "/bot/mode/{mode}/reauth"): "manage_bot",
+    ("POST", "/bot/mode/{mode}/confirm"): "manage_bot",
     ("GET", "/bot/capital/{mode}/request"): "manage_bot",
     ("POST", "/bot/capital/{mode}/reauth"): "manage_bot",
     ("POST", "/bot/capital/{mode}/confirm"): "manage_bot",

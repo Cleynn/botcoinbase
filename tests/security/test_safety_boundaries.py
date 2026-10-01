@@ -92,7 +92,13 @@ def test_only_the_host_modules_reference_submit_or_cancel_calls() -> None:
         for p, s in sources(SAFETY, EXCHANGE, APP / "api", APP / "web").items()
         if "submit" in code_words(s) or "cancel" in code_words(s)
     }
-    assert users <= {"pipeline.py", "gateway.py", "fake.py", "commands.py"}, users
+    assert users <= {
+        "pipeline.py",
+        "gateway.py",
+        "fake.py",
+        "commands.py",
+        "coinbase_live.py",  # Phase 10: the live gateway (create and cancel only)
+    }, users
 
 
 def test_bot_routes_and_views_carry_no_order_creation() -> None:
@@ -290,6 +296,8 @@ def test_all_safety_sql_writes_target_only_safety_tables() -> None:
         "control_commands",
         "live_attestations",  # Phase 10: host-written, append-only
         "live_arming",  # Phase 10: host-written, revoke-only, at most 24 hours
+        "trading_config",  # Phase 10: per-mode limits, edited only while the bot is PAUSED
+        "trading_state",  # Phase 10: active mode, changed only while the bot is PAUSED
     }, writes
     assert "TRUNCATE" not in source and "DROP" not in source
 

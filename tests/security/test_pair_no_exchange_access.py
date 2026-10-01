@@ -113,6 +113,9 @@ def test_no_pair_route_can_create_or_cancel_an_order(app: Any) -> None:
         "/bot/capital/{mode}/request",
         "/bot/capital/{mode}/reauth",
         "/bot/capital/{mode}/confirm",
+        "/bot/mode/{mode}/request",
+        "/bot/mode/{mode}/reauth",
+        "/bot/mode/{mode}/confirm",
     }
     assert not [
         p

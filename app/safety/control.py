@@ -49,6 +49,12 @@ PROFILE_PHRASES: Final[dict[str, str]] = {
     "paper": "UPDATE CAPITAL LIMITS FOR PAPER MODE",
     "live": "UPDATE CAPITAL LIMITS FOR LIVE MODE",
 }
+# Choosing the trading mode (never an order): BACKTEST, PAPER or LIVE.
+MODE_PHRASES: Final[dict[str, str]] = {
+    "backtest": "SWITCH TO BACKTEST MODE",
+    "paper": "SWITCH TO PAPER MODE",
+    "live": "SWITCH TO LIVE MODE",
+}
 DB_RECONCILE_WINDOW_SECONDS: Final = 300  # the database guard's hard limit
 
 Kind = Literal[
@@ -89,6 +95,8 @@ class Overview:
     api_failures_1h: int
     reauth_active: bool = False
     capital: CapitalOverview | None = None
+    trading_mode: str = "PAPER"
+    live_armed: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -170,6 +178,8 @@ class ControlService:
                 api_failures_1h=bad,
                 reauth_active=self._reauth_active(ctx) if ctx is not None else False,
                 capital=self._capital(repos, now),
+                trading_mode=repos.safety.trading_state()[0],
+                live_armed=repos.safety.live_armed(now),
             )
 
     def _capital(self, repos: Repos, now: datetime) -> CapitalOverview:
@@ -297,6 +307,55 @@ class ControlService:
             with self._storage.tx() as repos:
                 self._deny(repos, actor, action, "GUARD_REFUSED")
             return Outcome("not_allowed", ("GUARD_REFUSED",))
+
+    def switch_mode(self, ctx: AuthContext, actor: Actor, mode: str, typed: str) -> Outcome:
+        """Choose BACKTEST, PAPER or LIVE. Never creates, changes or sells an order and never arms
+        live trading: LIVE orders still need the host arming, the kill switch and every cap. Only
+        while the bot is PAUSED and the paper side is idle (both enforced again by the database)."""
+        if mode not in MODE_PHRASES:  # checked first: a bad request never spends the reauth
+            return Outcome("invalid", ("MODE",))
+        action = f"{mode}_mode"
+        refused = self._confirmed(
+            ctx, actor, action, MODE_PHRASES[mode], typed, {"mode": mode.upper()}
+        )
+        if refused is not None:
+            return refused
+        try:
+            with self._storage.tx() as repos:
+                return self._mode_command(repos, actor, action, mode.upper())
+        except psycopg.errors.IntegrityConstraintViolation:
+            with self._storage.tx() as repos:
+                self._deny(repos, actor, action, "GUARD_REFUSED")
+            return Outcome("not_allowed", ("GUARD_REFUSED",))
+
+    def _mode_command(self, repos: Repos, actor: Actor, action: str, mode: str) -> Outcome:
+        now = self._clock.now()
+        if repos.safety.control(for_update=True).bot_state != "PAUSED":
+            self._deny(repos, actor, action, "BOT_MUST_BE_PAUSED")
+            return Outcome("not_allowed", ("BOT_MUST_BE_PAUSED",))
+        current, version = repos.safety.trading_state(for_update=True)
+        if current == mode:
+            self._deny(repos, actor, action, "MODE_UNCHANGED")
+            return Outcome("not_allowed", ("MODE_UNCHANGED",))
+        if not repos.safety.paper_side_idle():
+            self._deny(repos, actor, action, "PAPER_NOT_IDLE")
+            return Outcome("not_allowed", ("PAPER_NOT_IDLE",))
+        if not repos.safety.set_active_mode(mode, version, now):
+            return self._lost_race(repos, actor, action)
+        self._record(
+            repos,
+            actor,
+            Evt.BOT_MODE_SWITCHED,
+            Res.SUCCESS,
+            f"MODE_{current}_TO_{mode}",
+            {
+                "from": current,
+                "to": mode,
+                "live_gate": panel(self._settings).status,
+                "live_armed": repos.safety.live_armed(now),
+            },
+        )
+        return Outcome("ok")
 
     def _profile_command(
         self, repos: Repos, actor: Actor, action: str, mode: str, profile: str

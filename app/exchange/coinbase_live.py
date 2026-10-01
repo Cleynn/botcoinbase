@@ -5,9 +5,10 @@
 * The order body is `OrderRequest.body()`: a post-only limit GTC order with a client id. There is no
   market order, stop, margin or transfer, so nothing (including the kill switch) can market-sell.
 * A definite refusal (auth, validation, rate limit, `success: false`) is REJECTED: nothing was
-  placed and a later retry is a new attempt. Anything that may have been processed (timeout, network loss,
-  5xx, an unparseable answer, a duplicate client id) is never reported as a success or a failure:
-  it is ambiguous, the attempt becomes UNKNOWN and reconciliation decides before any retry.
+  placed and a later retry is a new attempt. Anything that may have been processed (timeout,
+  network loss, 5xx, an unparseable answer, a duplicate client id) is never reported as a success
+  or a failure: it is ambiguous, the attempt becomes UNKNOWN and reconciliation decides before
+  any retry.
 
 The response shapes follow the documented ones and are NOT verified against the live API from this
 repository (AS-C3, AS-C4); the VPS network test is where that happens.

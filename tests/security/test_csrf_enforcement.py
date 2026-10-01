@@ -22,6 +22,8 @@ def test_every_state_changing_route_is_covered(app: Any) -> None:
     assert unsafe_paths(app) == [
         "/bot/capital/{mode}/confirm",
         "/bot/capital/{mode}/reauth",
+        "/bot/mode/{mode}/confirm",
+        "/bot/mode/{mode}/reauth",
         "/bot/{slug}/confirm",
         "/bot/{slug}/reauth",
         "/login",
