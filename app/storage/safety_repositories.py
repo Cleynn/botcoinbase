@@ -377,7 +377,8 @@ class SafetyRepository:
         return str(row["active_mode"]), int(row["version"])
 
     def active_trading_config(self) -> TradingConfig:
-        return self.trading_config(self.trading_state()[0])
+        """The configuration of the active mode (BACKTEST and PAPER share the PAPER row)."""
+        return self.trading_config("LIVE" if self.trading_state()[0] == "LIVE" else "PAPER")
 
     def update_trading_config(self, cfg: TradingConfig, now: datetime) -> bool:
         """Compare-and-set on the version; False means someone else changed it first."""
