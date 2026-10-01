@@ -1,7 +1,7 @@
 PY ?= uv run python
 COMPOSE ?= docker compose
 
-.PHONY: pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list proposal-validate proposal-cleanup proposal-list safety-status safety-recover safety-reconcile safety-monitor safety-commands
+.PHONY: vps-check pairs-discover pairs-seed pairs-validate pairs-list format lint typecheck test up down logs health verify-security-config verify-security-config-example verify-monitoring-config monitoring-status market-import market-snapshot market-quality backtest paper-status paper-step paper-report review-build review-verify review-cleanup review-list proposal-validate proposal-cleanup proposal-list safety-status safety-recover safety-reconcile safety-monitor safety-commands
 
 format:
 	uv run ruff check --fix .
@@ -125,3 +125,6 @@ safety-monitor:
 
 safety-commands:
 	docker compose --profile discovery run --rm batch safety commands
+
+vps-check:
+	scripts/vps/check.sh
