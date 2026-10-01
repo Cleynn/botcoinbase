@@ -254,12 +254,15 @@ services:
       TD_DB_USER: td_ctl
       TD_DB_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
       TD_EGRESS_PROXY: http://egress-proxy:3128
+      TD_COINBASE_KEY_FILE: /run/secrets/coinbase.json
     read_only: true
     tmpfs: ["/tmp:size=64m"]
     volumes:
       - datasets:/data
       - review_packages:/review   # review packages (read-write here only)
       - proposals:/proposals      # untrusted proposal files: validated and purged here
+      # Coinbase key (host only, never the web app); /dev/null when no key is installed
+      - ${TD_COINBASE_KEY_HOST_PATH:-/dev/null}:/run/secrets/coinbase.json:ro
     networks: [backend, egress_int]
     depends_on:
       migrate: {condition: service_completed_successfully}

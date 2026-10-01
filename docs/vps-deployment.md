@@ -19,7 +19,7 @@ with the output of `scripts/vps/check.sh` (it never prints secrets).
 | 4 | DNS: A records for `tradingdots.onthewall.ovh` and `grafana.tradingdots.onthewall.ovh` -> server IPv4 (no AAAA) | certificates need it | `check.sh` DNS lines `[ OK ]` |
 | 5 | `sudo scripts/vps/03-firewall.sh --ssh-port 22` (dry run), then add `--yes` | deny all incoming except SSH, 80, 443 | `Status: active` |
 | 6 | `scripts/vps/04-setup-env.sh` | creates `.env` with random secrets (mode 600) | `.env created` |
-| 7 | LIVE only: `sudo scripts/vps/04-setup-env.sh --key-dir`, follow the printed 6 steps | key file outside the repo, mode 600 | credential section `[ OK ]` |
+| 7 | LIVE only: `sudo scripts/vps/06-install-key.sh` (asks the key name, then the PRIVATE key with echo off; or `--from-json FILE`) | writes `/opt/tradingdots/secrets/coinbase.json` (uid 10001, mode 600), sets `TD_COINBASE_KEY_HOST_PATH` and `TD_COINBASE_KEY_FILE` in `.env`; compose mounts it read-only into `batch` only | `Key installed`, then `docker compose --profile discovery run --rm batch live check` |
 | 8 | `scripts/vps/05-first-start.sh` | verifies config, builds, starts, checks | `docker compose ps` shows services running |
 | 9 | `docker compose run --rm -it ctl python scripts/create_admin.py` | first ADMIN (password typed at the prompt) | admin created |
 | 10 | open `https://tradingdots.onthewall.ovh/` | log in | the dashboard over valid HTTPS |
@@ -37,8 +37,8 @@ Steps 2 and 3 can be run in either order; step 4 can be done while they run (pro
 
 ## Secrets
 
-* The Coinbase key file is copied with `scp` straight to `/opt/tradingdots/secrets/coinbase.json`
-  (mode 600). Never paste its contents (or the `privateKey`) in chat, an issue, a commit or `.env`.
+* The Coinbase key: the PRIVATE key and the key name are needed, never the public key. Use
+  `scripts/vps/06-install-key.sh`. Never paste its contents (or the `privateKey`) in chat, an issue, a commit or `.env`.
 * Create the key with View and Trade only, never Transfer, and allowlist the server IP on the key.
 * `.env` holds the generated passwords: do not commit it or share it.
 

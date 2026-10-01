@@ -30,11 +30,10 @@ Coinbase key file (needed only for LIVE data and orders; PAPER and BACKTEST do n
   1. On the Coinbase Developer Platform create a Secret API key (ECDSA) with View and Trade
      permissions only. NEVER enable Transfer or withdrawal. Add this server's IP to the key's allowlist.
   2. Download the JSON file. It holds "name" and "privateKey".
-  3. Copy it from your computer WITHOUT pasting it anywhere else:
-       scp cdp_api_key.json USER@SERVER:$DIR/coinbase.json
-  4. On the server:  sudo chmod 600 $DIR/coinbase.json
-  5. Add this line to .env:  TD_COINBASE_KEY_FILE=$DIR/coinbase.json
-  6. Check:  scripts/vps/check.sh   (the credential section must be all [ OK ])
+  3. On the server run:  sudo scripts/vps/06-install-key.sh
+     It asks for the key name and the PRIVATE key (typed with echo off), writes $DIR/coinbase.json
+     (mode 600) and sets TD_COINBASE_KEY_FILE in .env. Never paste the key anywhere else.
+  4. Check:  scripts/vps/check.sh   (the credential section must be all [ OK ])
 STEPS
 fi
 echo "Next: scripts/vps/05-first-start.sh"
