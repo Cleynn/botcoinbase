@@ -84,7 +84,7 @@ if [ -f docker-compose.yml ] && [ -f Dockerfile ] && [ -f pyproject.toml ]; then
 if [ -f .env ]; then
   mode="$(stat -c '%a' .env 2>/dev/null || echo '?')"
   if [ "$mode" = "600" ]; then ok ".env file" "present, mode 600"; else bad ".env file" "mode is $mode (must be 600)" "chmod 600 .env"; fi
-  if grep -Eiq 'CHANGE_ME|REPLACE_ME|changeme|placeholder' .env; then bad ".env secrets" "placeholder values remain" "rm .env && scripts/vps/04-setup-env.sh   (regenerates every secret)"; else ok ".env secrets" "no placeholder left"; fi
+  if grep -Ev '^[[:space:]]*#' .env | grep -Eiq 'CHANGE_ME|REPLACE_ME|changeme|placeholder'; then bad ".env secrets" "placeholder values remain" "rm .env && scripts/vps/04-setup-env.sh   (regenerates every secret)"; else ok ".env secrets" "no placeholder left"; fi
   APP_HOST="$(env_value TD_APP_HOSTNAME)"; GRAFANA_HOST="$(env_value TD_GRAFANA_HOSTNAME)"
   if [ -n "$APP_HOST" ] && [ -n "$GRAFANA_HOST" ]; then ok "hostnames" "$APP_HOST and $GRAFANA_HOST"; else bad "hostnames" "TD_APP_HOSTNAME or TD_GRAFANA_HOSTNAME is empty" "edit .env and set both"; fi
 else
