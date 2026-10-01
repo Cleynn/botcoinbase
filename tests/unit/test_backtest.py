@@ -181,8 +181,8 @@ def test_growth_and_regridding_cannot_be_switched_on_even_by_bypassing_validatio
         BASE.model_validate({**BASE.model_dump(), "capital_growth_enabled": True})
 
 
-def test_levels_outside_three_to_five_stop_the_run() -> None:
-    for levels in (2, 6):
+def test_levels_outside_three_to_twenty_stop_the_run() -> None:
+    for levels in (2, 21):
         with pytest.raises(InvariantViolation):
             Trader(cfg(levels=levels), initial_state(BASE), lambda n: [])
 

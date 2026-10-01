@@ -294,9 +294,13 @@ class PairService:
             others = repos.pairs.others_in_states(
                 pair.id, frozenset({PairState.PAPER_ACTIVE, PairState.PAUSED})
             )
-            if any(o.state is PairState.PAPER_ACTIVE for o in others):
+            max_pairs = (
+                repos.safety.active_trading_config().max_pairs
+            )  # the database enforces it too
+            active_others = sum(1 for o in others if o.state is PairState.PAPER_ACTIVE)
+            if active_others >= max_pairs:
                 reasons.append("ANOTHER_PAIR_ACTIVE")
-            if any(o.state is PairState.PAUSED for o in others):
+            if max_pairs == 1 and any(o.state is PairState.PAUSED for o in others):
                 reasons.append("ANOTHER_PAIR_PAUSED")
             reasons.extend(self._gate.activation_blockers(repos, pair))
         if action in (PairAction.DISABLE, PairAction.ARCHIVE) and pair.ever_active:

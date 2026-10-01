@@ -38,6 +38,7 @@ class CapitalPolicy:
     reserve: Decimal
     cap: Decimal
     profile: str = DEFAULT_PROFILE
+    max_order: Decimal | None = None  # no cell is sized above the per-order cap
 
     def validate(self) -> None:
         limits = PROFILES.get(self.profile)
@@ -129,6 +130,8 @@ def build_grid(
         raise GridRejected("PRICE_STEP_TOO_COARSE")  # lines collapse onto the same increment
 
     cell_budget = quantize_down(capital.cap / cells_n, rules.quote_increment)
+    if capital.max_order is not None:
+        cell_budget = min(cell_budget, quantize_down(capital.max_order, rules.quote_increment))
     cells: list[Cell] = []
     for i in range(cells_n):
         buy, sell = buys[i], sells[i]
@@ -136,6 +139,10 @@ def build_grid(
             raise GridRejected("PRICE_STEP_TOO_COARSE")
         usable = cell_budget - rules.quote_increment  # keep one increment for fee rounding
         qty = quantize_down(usable / (buy * (ONE + costs.stress_fee)), rules.base_increment)
+        if (
+            capital.max_order is not None
+        ):  # the SELL of this cell is an order too, at a higher price
+            qty = min(qty, quantize_down(capital.max_order / sell, rules.base_increment))
         if qty < rules.base_min_size:
             raise GridRejected("BELOW_BASE_MINIMUM")
         if rules.base_max_size is not None and qty > rules.base_max_size:

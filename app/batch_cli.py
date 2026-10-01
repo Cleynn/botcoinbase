@@ -89,6 +89,10 @@ def _parser() -> argparse.ArgumentParser:
     release.add_argument("--confirm", required=True, help="the exact phrase RELEASE KILL SWITCH")
     safety.add_parser("prune", help="delete exchange call records older than seven days")
 
+    from app.live.cli import add_parser as add_live_parser
+
+    add_live_parser(top)
+
     paper = top.add_parser("paper").add_subparsers(dest="command", required=True)
     paper.add_parser("status")
     start = paper.add_parser("start")
@@ -121,7 +125,12 @@ def main(
         storage.check_schema()
         clock = clock or SystemClock()
         owned: CoinbasePublicClient | None = None
-        if args.group == "market" and args.command == "import" and client is None:
+        if (
+            args.group == "market"
+            and args.command == "import"
+            or args.group == "live"
+            and args.command == "run"
+        ) and client is None:
             owned = client = CoinbasePublicClient(settings.exchange)
         try:
             return _dispatch(args, settings, storage, clock, client, sleep, out, reader, gateway)
@@ -147,6 +156,10 @@ def _dispatch(
     reader: ExchangeReader | None = None,
     gateway: ExecutionGateway | None = None,
 ) -> int:
+    if args.group == "live":
+        from app.live.cli import run_live
+
+        return run_live(args, settings, storage, clock, out, reader, gateway, client, sleep)
     if args.group == "safety":
         return _safety(args, settings, storage, clock, out, reader, gateway)
     if args.group == "market":

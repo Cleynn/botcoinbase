@@ -479,6 +479,7 @@ class PairPolicy(BaseModel):
     max_deployment: Decimal
     grid_levels: int
     max_active_pairs: int
+    max_order: Decimal | None = None  # set by `for_trading`: the per-order cap of the configuration
     regridding_enabled: bool = False
     capital_growth_enabled: bool = False
     max_pairs: int = Field(default=20, ge=1, le=20)
@@ -487,7 +488,7 @@ class PairPolicy(BaseModel):
     strategy: StrategyPolicy = StrategyPolicy()
     backtest: BacktestPolicy = BacktestPolicy()
 
-    @field_validator("total_capital", "min_reserve", "max_deployment", mode="before")
+    @field_validator("total_capital", "min_reserve", "max_deployment", "max_order", mode="before")
     @classmethod
     def _no_float(cls, value: Any) -> Any:
         return _reject_float(value)
@@ -526,6 +527,7 @@ class PairPolicy(BaseModel):
             total_capital=cfg.allocation_cap,
             min_reserve=cfg.reserve,
             max_deployment=cfg.quote_per_grid,
+            max_order=cfg.per_order_cap,
             grid_levels=cfg.levels_per_grid,
             max_active_pairs=cfg.max_pairs,
         )

@@ -20,7 +20,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         from app.pairs.cli import main as pairs_main
 
         return pairs_main(args_in[1:])
-    if args_in and args_in[0] in ("market", "backtest", "paper", "review", "proposal", "safety"):
+    if args_in and args_in[0] in (
+        "market",
+        "backtest",
+        "paper",
+        "review",
+        "proposal",
+        "safety",
+        "live",
+    ):
         from app.batch_cli import main as batch_main
 
         return batch_main(args_in)

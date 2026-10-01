@@ -163,7 +163,7 @@ class RiskContextBuilder:
                 last_price = candles[-1].close if candles else None
 
         capital, equity = self._capital_and_equity(repos, venue, now, last_price, intent.product_id)
-        profile: CapitalProfile | None = PROFILES.get(control.paper_profile)  # every venue is paper
+        profile = self._profile(repos, venue, control.paper_profile)
         funds = self._funds(accounts, capital.inventory_cost if capital else None, now)
         failures = repos.safety.api_failures_since(
             venue, now - timedelta(seconds=s.api_failure_window_seconds)
@@ -196,6 +196,26 @@ class RiskContextBuilder:
             profile=profile,
             funds=funds,
         )
+
+    @staticmethod
+    def _profile(repos: Repos, venue: str, paper_profile: str) -> CapitalProfile | None:
+        """The limits the order is checked against. A named profile selected for PAPER keeps its
+        registry values; a hand-edited configuration ("custom", and every COINBASE order) uses the
+        numbers of the trading configuration, the same ones the database enforces."""
+        if venue != "COINBASE" and paper_profile in PROFILES:
+            return PROFILES[paper_profile]
+        cfg = repos.safety.trading_config("LIVE" if venue == "COINBASE" else "PAPER")
+        try:
+            return CapitalProfile(
+                "custom",
+                "Trading configuration",
+                cfg.allocation_cap,
+                cfg.reserve,
+                cfg.invested_cap,
+                cfg.per_order_cap,
+            )
+        except ValueError:
+            return None  # an invalid configuration blocks every order (PROFILE_UNAVAILABLE)
 
     @staticmethod
     def _funds(

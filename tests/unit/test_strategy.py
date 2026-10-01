@@ -95,8 +95,8 @@ def test_capital_limits_hold_for_every_allowed_level_count(levels: int) -> None:
     assert all(c.base_qty * c.buy_price * (1 + COSTS.stress_fee) <= c.reserve for c in plan.cells)
 
 
-@pytest.mark.parametrize("levels", [-1, 0, 1, 2, 6, 7, 100])
-def test_levels_outside_three_to_five_are_refused(levels: int) -> None:
+@pytest.mark.parametrize("levels", [-1, 0, 1, 2, 21, 22, 100])
+def test_levels_outside_three_to_twenty_are_refused(levels: int) -> None:
     with pytest.raises(GridRejected) as err:
         build(levels=levels)
     assert err.value.code == "LEVELS_OUT_OF_RANGE"

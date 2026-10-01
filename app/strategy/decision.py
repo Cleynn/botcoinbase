@@ -91,7 +91,11 @@ def capital_policy(policy: PairPolicy, funds: Funds | None = None) -> CapitalPol
             ),
         )
     return CapitalPolicy(
-        policy.total_capital, policy.min_reserve, cap, profile=policy.capital_profile
+        policy.total_capital,
+        policy.min_reserve,
+        cap,
+        profile=policy.capital_profile,
+        max_order=policy.max_order,
     )
 
 

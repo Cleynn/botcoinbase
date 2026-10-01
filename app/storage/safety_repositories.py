@@ -97,6 +97,22 @@ class IntentRow:
 
 
 @dataclass(frozen=True)
+class LiveGridRow:
+    id: UUID
+    pair_id: UUID
+    product_id: str
+    state: str  # ACTIVE | STOPPED
+    levels: int
+    lower: Decimal
+    upper: Decimal
+    cells: list[dict[str, Any]]  # index, buy, sell, qty, ret (decimal strings)
+    commitment: Decimal
+    created_at: datetime
+    stopped_at: datetime | None = None
+    stop_reason: str | None = None
+
+
+@dataclass(frozen=True)
 class DecisionRow:
     id: UUID
     intent_id: UUID
@@ -470,6 +486,43 @@ class SafetyRepository:
             "SELECT currency, amount FROM venue_baselines WHERE venue = %s", (venue,)
         ).fetchall()
         return {r["currency"]: r["amount"] for r in rows}
+
+    # ------------------------------------------------------------------ live grids (host writes)
+    def add_live_grid(self, row: LiveGridRow) -> None:
+        self._conn.execute(
+            "INSERT INTO live_grids (id, pair_id, product_id, state, levels, lower, upper, cells, "
+            "commitment, created_at) VALUES (%s, %s, %s, 'ACTIVE', %s, %s, %s, %s::jsonb, %s, %s)",
+            (
+                row.id, row.pair_id, row.product_id, row.levels, row.lower, row.upper,
+                json.dumps(row.cells), row.commitment, row.created_at,
+            ),
+        )  # fmt: skip
+
+    def live_grids(
+        self, *, active_only: bool = True, pair_id: UUID | None = None
+    ) -> list[LiveGridRow]:
+        rows = self._conn.execute(
+            "SELECT * FROM live_grids WHERE (NOT %s OR state = 'ACTIVE') "
+            "AND (%s::uuid IS NULL OR pair_id = %s) ORDER BY created_at",
+            (active_only, pair_id, pair_id),
+        ).fetchall()
+        return [LiveGridRow(**r) for r in rows]
+
+    def stop_live_grid(self, grid_id: UUID, reason: str, now: datetime) -> bool:
+        cur = self._conn.execute(
+            "UPDATE live_grids SET state = 'STOPPED', stopped_at = %s, stop_reason = %s "
+            "WHERE id = %s AND state = 'ACTIVE'",
+            (now, reason, grid_id),
+        )
+        return cur.rowcount == 1
+
+    def intents_for_pair(self, pair_id: UUID, prefix: str, since: datetime) -> list[IntentRow]:
+        rows = self._conn.execute(
+            "SELECT * FROM order_intents WHERE pair_id = %s AND source LIKE %s AND created_at >= %s "
+            "ORDER BY created_at",
+            (pair_id, prefix + "%", since),
+        ).fetchall()
+        return [IntentRow(**r) for r in rows]
 
     # ------------------------------------------------------------------ intents and decisions
     def add_intent(self, row: IntentRow) -> None:

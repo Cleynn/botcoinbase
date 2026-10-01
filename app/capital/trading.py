@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from app.capital.profiles import ZERO
+from app.capital.profiles import RESERVE_FLOOR_RATIO, ZERO
 
 MODES: Final = ("PAPER", "LIVE")
 MAX_PAIRS_LIMIT: Final = 10
@@ -50,6 +50,8 @@ def problems(cfg: TradingConfig) -> list[str]:
     amounts = (cfg.quote_per_grid, cfg.invested_cap, cfg.reserve, cfg.per_order_cap)
     if any(not isinstance(a, Decimal) or not a.is_finite() or a < ZERO for a in amounts):
         return [*out, "AMOUNTS"]
+    if cfg.reserve < cfg.allocation_cap * RESERVE_FLOOR_RATIO:
+        out.append("RESERVE_BELOW_FLOOR")  # fund protection: at least 20% of the money stays aside
     if cfg.quote_per_grid * cfg.max_pairs > cfg.invested_cap:
         out.append("GRIDS_EXCEED_INVESTED_CAP")
     if cfg.per_order_cap > cfg.quote_per_grid:
