@@ -19,6 +19,7 @@ from app.auth.audit import AuditWriter
 from app.backtest.service import BacktestError, BacktestService
 from app.config import ConfigError, Settings, load_settings
 from app.domain.models import Clock, SystemClock
+from app.exchange.credentials import CredentialError
 from app.exchange.factory import build_gateway, build_reader
 from app.exchange.gateway import ExecutionGateway
 from app.exchange.reader import ExchangeReader, RecordingReader, RetryingReader
@@ -139,6 +140,9 @@ def main(
                 owned.close()
     except (ConfigError, SchemaError, StorageUnavailable) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except CredentialError as exc:  # a fixed code, never file content
+        print(f"error: Coinbase key file refused: {exc}", file=sys.stderr)
         return 1
     except (RunnerError, PaperError, BacktestError, SnapshotError) as exc:
         print(f"error: {exc.code}", file=sys.stderr)

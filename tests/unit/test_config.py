@@ -31,6 +31,19 @@ def test_unknown_td_variable_is_rejected() -> None:
         load_settings({"TD_ENVIRONMENT": "test", "TD_LIVE_ENABLED": "true"})
 
 
+def test_the_coinbase_key_file_variables_are_accepted_but_are_not_settings() -> None:
+    # Compose always sets TD_COINBASE_KEY_FILE for the host CLI, and the key installer writes both
+    # to .env: rejecting them broke every `batch` command and the environment-file check.
+    env = {
+        "TD_ENVIRONMENT": "test",
+        "TD_COINBASE_KEY_FILE": "/run/secrets/coinbase.json",
+        "TD_COINBASE_KEY_HOST_PATH": "/opt/tradingdots/secrets/coinbase.json",
+    }
+    assert load_settings(env) == load_settings({"TD_ENVIRONMENT": "test"})
+    with pytest.raises(ConfigError, match="TD_COINBASE_KEY"):
+        load_settings({**env, "TD_COINBASE_KEY": "x"})
+
+
 def test_invalid_boolean_is_rejected() -> None:
     with pytest.raises(ConfigError):
         load_settings({"TD_ENVIRONMENT": "test", "TD_DEBUG": "maybe"})

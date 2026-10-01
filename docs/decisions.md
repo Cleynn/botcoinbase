@@ -272,6 +272,12 @@ The VPS already runs Apache on 80/443 for another site, and the operator chose t
 - New exposure: Apache is now part of the trusted path (it sees plaintext requests, cookies included, and its access log keeps full client addresses); its `Server` header replaces the one Caddy removes.
 - review: SELF. **No independent security review has been performed.**
 
+### DEC-028: The Coinbase key variables are accepted settings; first real Coinbase response
+Found on the VPS on 2026-10-01 after the first key install.
+- `load_settings` rejected `TD_COINBASE_KEY_FILE` as unknown. Compose always sets it for `batch` and `live`, so every command of those services failed, and after `06-install-key.sh` wrote it (with `TD_COINBASE_KEY_HOST_PATH`) to `.env` the environment-file check failed too. Both names are now accepted control variables; neither maps onto `Settings`, and the key is still read only by `app.exchange.credentials`. A refused key file met outside `live` is reported by its fixed code instead of a traceback.
+- Verified on the VPS with the real key: signing and `GET /key_permissions` work through the egress proxy (view and trade yes, transfer no, portfolio DEFAULT); a bare UUID key id is accepted as the key name. This is the only real Coinbase response this code has parsed; no other private endpoint has been called and no order has been placed.
+- review: SELF. **No independent security review has been performed.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;

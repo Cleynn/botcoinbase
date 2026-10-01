@@ -56,6 +56,10 @@ _ENV_CONTROL = {
     "TD_DB_OWNER_PASSWORD",
     "TD_DB_APP_PASSWORD",
     "TD_DB_CTL_PASSWORD",
+    # The Coinbase key file: read by app.exchange.credentials (host containers only), never part of
+    # Settings. HOST_PATH is the Compose-side path of the same file and only appears in .env.
+    "TD_COINBASE_KEY_FILE",
+    "TD_COINBASE_KEY_HOST_PATH",
 }
 _KNOWN_ENV = set(_ENV_FIELDS) | _ENV_CONTROL
 
