@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "base.html" import reauth_step %}
 {% block content %}
 <h1>{{ view.label }}: {{ view.product_id }}</h1>
 <p><a href="/pairs/{{ view.pair_id }}">Back to the pair</a> · current state <strong>{{ view.state }}</strong></p>
@@ -12,17 +13,7 @@
   <p>No confirmation is offered while a guard refuses the action.</p>
 </section>
 {% else %}
-<section aria-labelledby="pw-h">
-  <h2 id="pw-h">Step 1: confirm your password</h2>
-  <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
-  <form method="post" action="/pairs/{{ view.pair_id }}/{{ view.action }}/reauth" class="stacked">
-    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
-    <input type="hidden" name="version" value="{{ view.version }}">
-    <p><label for="reauth_password">Password</label>
-       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
-    <p><button type="submit">Confirm password</button></p>
-  </form>
-</section>
+{% call reauth_step(view.reauth_active, "/pairs/" ~ view.pair_id ~ "/" ~ view.action ~ "/reauth", auth.csrf_token, "/pairs/" ~ view.pair_id) %}<input type="hidden" name="version" value="{{ view.version }}">{% endcall %}
 <section aria-labelledby="ph-h">
   <h2 id="ph-h">Step 2: type the phrase</h2>
   <form method="post" action="/pairs/{{ view.pair_id }}/{{ view.action }}/confirm" class="stacked">

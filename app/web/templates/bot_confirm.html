@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "base.html" import reauth_step %}
 {% block content %}
 <h1>{{ view.title }}</h1>
 <p><a href="/bot">Back</a></p>
@@ -6,17 +7,7 @@
 <p class="notice">{{ view.notice }}</p>
 <ul>{% for line in view.lines %}<li>{{ line }}</li>{% endfor %}</ul>
 {% if view.blockers %}<p>Blocked right now by:</p><ul>{% for b in view.blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-<section aria-labelledby="pw-h">
-  <h2 id="pw-h">Step 1: confirm your password</h2>
-  <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
-  <form method="post" action="{{ view.action_path }}/reauth" class="stacked">
-    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
-    {% for name, value in view.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-    <p><label for="reauth_password">Password</label>
-       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
-    <p><button type="submit">Confirm password</button></p>
-  </form>
-</section>
+{% call reauth_step(view.reauth_active, view.action_path ~ "/reauth", auth.csrf_token, "/bot") %}{% for name, value in view.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}{% endcall %}
 <section aria-labelledby="ph-h">
   <h2 id="ph-h">Step 2: type the phrase</h2>
   <form method="post" action="{{ view.action_path }}/confirm" class="stacked">

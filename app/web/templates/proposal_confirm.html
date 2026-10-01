@@ -1,20 +1,12 @@
 {% extends "base.html" %}
+{% from "base.html" import reauth_step %}
 {% block content %}
 <h1>{{ view.title }} <span class="badge badge-untrusted">{{ view.label }}</span></h1>
 <p><a href="{{ view.back_href }}">Back</a></p>
 {% if view.message_text %}<p class="msg {{ view.message_kind }}" role="{{ 'alert' if view.message_kind == 'error' else 'status' }}">{{ view.message_text }}</p>{% endif %}
 <p class="notice"><strong>{{ view.label }}.</strong> {{ view.notice }}</p>
 <ul>{% for line in view.summary %}<li>{{ line }}</li>{% endfor %}</ul>
-<section aria-labelledby="pw-h">
-  <h2 id="pw-h">Step 1: confirm your password</h2>
-  <p>Status: <strong>{{ "confirmed (single use)" if view.reauth_active else "not confirmed" }}</strong>.</p>
-  <form method="post" action="{{ view.action_path }}/reauth" class="stacked">
-    <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
-    <p><label for="reauth_password">Password</label>
-       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
-    <p><button type="submit">Confirm password</button></p>
-  </form>
-</section>
+{% call reauth_step(view.reauth_active, view.action_path ~ "/reauth", auth.csrf_token, view.back_href) %}{% endcall %}
 <section aria-labelledby="ph-h">
   <h2 id="ph-h">Step 2: {{ "complete the form and type the phrase" if view.phrase else "complete the form" }}</h2>
   <form method="post" action="{{ view.action_path }}/confirm" class="stacked"{% if view.multipart %} enctype="multipart/form-data"{% endif %}>

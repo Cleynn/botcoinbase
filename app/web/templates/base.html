@@ -6,6 +6,29 @@
   <p>Data sources: none connected</p>
 </section>
 {%- endmacro %}
+{#- Step 1 of a sensitive action. Not confirmed yet: a <dialog> that static/js/app.js opens as a
+    pop-up when the page loads (the action was just launched); without JavaScript it is an open
+    dialog, shown in the page. The caller's body is the hidden fields the action carries. -#}
+{% macro reauth_step(active, action, csrf_token, cancel_href) -%}
+{% if active %}
+<section aria-labelledby="pw-h">
+  <h2 id="pw-h">Step 1: confirm your password</h2>
+  <p>Status: <strong>confirmed (single use)</strong>.</p>
+</section>
+{% else %}
+<dialog class="reauth" data-reauth-popup aria-labelledby="pw-h" open>
+  <h2 id="pw-h">Step 1: confirm your password</h2>
+  <p>This is a sensitive action. Status: <strong>not confirmed</strong>.</p>
+  <form method="post" action="{{ action }}" class="stacked">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {{ caller() }}
+    <p><label for="reauth_password">Password</label>
+       <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
+    <p><button type="submit">Confirm password</button> <a href="{{ cancel_href }}">Cancel</a></p>
+  </form>
+</dialog>
+{% endif %}
+{%- endmacro %}
 <!doctype html>
 <html lang="en">
 <head>

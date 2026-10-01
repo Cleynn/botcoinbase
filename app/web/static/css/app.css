@@ -94,3 +94,11 @@ main li,
 main dd {
   overflow-wrap: anywhere;
 }
+
+/* Password confirmation for sensitive actions: a pop-up when opened as a modal (static/js/app.js),
+   an ordinary box in the page otherwise (no JavaScript, or after Escape). */
+dialog.reauth { background: var(--bg); color: var(--fg); border: 2px solid var(--border); border-radius: .5rem;
+  padding: 1rem 1.25rem; width: calc(100% - 2rem); max-width: 28rem; }
+dialog.reauth:not(:modal) { position: static; margin: 1rem 0; }
+dialog.reauth::backdrop { background: rgba(0, 0, 0, .6); }
+dialog.reauth h2 { margin-top: 0; font-size: 1.125rem; }

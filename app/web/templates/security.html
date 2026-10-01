@@ -63,7 +63,9 @@
   </form>
 </section>
 
-<section aria-labelledby="reauth-h">
+{# Asked as a pop-up when a sensitive action on this page starts (static/js/app.js); without
+   JavaScript the dialog stays open and is simply part of the page. #}
+<dialog class="reauth" data-reauth-on-demand data-confirmed="{{ 'yes' if view.reauth_active else 'no' }}" aria-labelledby="reauth-h" open>
   <h2 id="reauth-h">Confirm your password</h2>
   <p>Sensitive actions need a fresh confirmation. Each confirmation is valid for {{ view.reauth_window }} seconds and for one action.
      Status: <strong>{{ "confirmed" if view.reauth_active else "not confirmed" }}</strong>.</p>
@@ -73,12 +75,12 @@
        <input id="reauth_password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></p>
     <p><button type="submit">Confirm password</button></p>
   </form>
-</section>
+</dialog>
 
 {% if view.users is not none %}
 <section aria-labelledby="users-h">
   <h2 id="users-h">Users and session revocation</h2>
-  <p>Revoking signs the user out everywhere. Confirm your password above first, then type the phrase exactly.</p>
+  <p>Revoking signs the user out everywhere. You are asked for your password first (status: <strong>{{ "confirmed" if view.reauth_active else "not confirmed" }}</strong>), then type the phrase exactly.</p>
   <div class="table-wrap">
     <table>
       <caption class="visually-hidden">User accounts</caption>
@@ -88,7 +90,7 @@
         <tr>
           <td>{{ u.username }}</td><td>{{ u.role }}</td><td>{{ u.status }}</td><td>{{ u.sessions }}</td>
           <td>
-            <form method="post" action="/security/users/revoke-sessions" class="stacked">
+            <form method="post" action="/security/users/revoke-sessions" class="stacked" data-needs-reauth>
               <input type="hidden" name="csrf_token" value="{{ auth.csrf_token }}">
               <input type="hidden" name="user_id" value="{{ u.id }}">
               <label for="confirm-{{ u.id }}">Type <code>{{ u.phrase }}</code></label>

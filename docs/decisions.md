@@ -295,6 +295,12 @@ The owner asked to choose the pairs to trade instead of a number of pairs.
 - Verified: `tests/integration/test_trading_mode.py`, `test_live_runner.py`, `test_live_cli.py` (FAKE exchange, real PostgreSQL). Not verified: any live order.
 - review: SELF. **No independent security review has been performed.**
 
+### DEC-031: The password confirmation of a sensitive action is a pop-up (owner-directed)
+- **What changed:** step 1 of every confirmation page (bot controls, capital, mode, trading configuration, pairs, review packages, proposals) is a `<dialog>` that `static/js/app.js` opens as a modal as soon as the page loads, with the focus in the password field. On the Security page the "Confirm your password" form is the same kind of dialog, opened when a sensitive form there (revoking a user's sessions) is first used or submitted without a confirmation. Once the password is confirmed no dialog is rendered.
+- **What did not change:** the server. Same routes, same forms, same CSRF token, single-use reauthentication, typed phrase and audit; the script sends nothing itself and reads no field. Without JavaScript (or in a browser without `showModal`) the dialog is rendered open and is simply part of the page, and after Escape the form goes back into the page, so the action can always be completed. No inline script or style (CSP unchanged).
+- Verified: markup tests (`tests/integration/test_reauth_popup.py`) and a manual run in headless Chromium against the rendered templates with the real script and stylesheet, with JavaScript on and off (pop-up on load, focus, Escape, on-demand opening on the Security page, no script error). That browser run is not part of the test suite. Not verified: other browsers, a screen reader.
+- review: SELF. **No independent security review has been performed.**
+
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups
 and anchors; SD-4 audited paper dust write-off; SD-5 step-up beyond password deferred to Phase 11;
