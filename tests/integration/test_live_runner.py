@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 
 from app.capital.profiles import ZERO
-from app.live import runner as runner_module
 from app.live.runner import LiveRunner, TickResult
 from app.safety.control import MODE_PHRASES
+from app.strategy import decision as strategy_decision
 from app.strategy.decision import GRID, Decision, capital_policy
 from app.strategy.grid import CostModel, build_grid
 from tests.integration.safety_env import SafetyEnv
@@ -50,7 +50,9 @@ def fixed_grid(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Replace the strategy decision by a 3-line grid from 3% below to 3% above the last price."""
     state: dict[str, Any] = {"calls": 0, "action": GRID}
 
-    def fake_decide(candles: Any, *, policy: Any, rules: Any, maker_fee: Any, funds: Any, **_: Any):
+    def fake_decide(
+        candles: Any, *, policy: Any, rules: Any, maker_fee: Any, funds: Any, **_: Any
+    ) -> Decision:
         state["calls"] += 1
         state["funds"] = funds
         state["policy"] = policy
@@ -68,7 +70,7 @@ def fixed_grid(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         state["plan"] = plan
         return Decision(GRID, ("GRID_FEASIBLE",), plan, {}, D(80))
 
-    monkeypatch.setattr(runner_module.strat, "decide", fake_decide)
+    monkeypatch.setattr(strategy_decision, "decide", fake_decide)
     return state
 
 

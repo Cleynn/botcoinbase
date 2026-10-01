@@ -206,7 +206,7 @@ def cfg(mode: str = "LIVE", **kw: Any) -> TradingConfig:
         "per_order_cap": Decimal("10"),
     }
     base.update(kw)
-    return TradingConfig(mode, **base)
+    return TradingConfig(mode, **base)  # type: ignore[arg-type]
 
 
 def stored(sql: Sql, mode: str) -> dict[str, Any]:
