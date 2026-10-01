@@ -5,7 +5,7 @@ Status: implemented as far as Phase 1 goes; baseline items beyond it are not bui
 ## Runtime topology
 
 ```
-Internet -> caddy (TCP 80/443, only published ports)
+Internet -> host Apache (TCP 80/443) -> caddy (loopback 8080/444, only published ports)
               |-- edge_app (internal) -----> app:8000  (FastAPI + Jinja2 + HTMX)
               '-- edge_grafana (internal) -> 503 placeholder (Grafana profile "monitoring", Phase 3)
 backend (internal): postgres, redis, app (PostgreSQL only), migrate (one-shot), ctl (profile ops)
@@ -15,7 +15,7 @@ edge_grafana (internal): caddy, grafana
 ```
 
 - Only `edge_public` has outbound access, and only Caddy is attached to it. The app has **no egress**.
-- No host ports other than Caddy's 80 and 443. Enforced by `scripts/verify_security_config.py` and tests.
+- No host ports other than Caddy's 8080 and 444, bound to 127.0.0.1; the host's Apache owns 80/443 and proxies both hostnames to them (`infra/apache/tradingdots.conf`, DEC-027). Enforced by `scripts/verify_security_config.py` and tests.
 - The app stores users, sessions, login attempts and the audit log in PostgreSQL. Redis is deployed but unused.
 - Roles: `tradingdots` (owner, used only by `migrate`), `td_app` (web), `td_ctl` (host CLI). See `app/storage/migrations/0001_auth.sql` for the exact grants.
 - Layers: `app/api` (routes, dependencies, errors) -> `app/auth` (password, session service, CSRF, throttling, audit, authorization) -> `app/storage` (repositories, migrations) ; `app/domain` holds enums, permissions and models; `app/web` holds templates and view models.

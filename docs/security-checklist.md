@@ -4,7 +4,7 @@
 
 ## Phase 1 (still true)
 - [x] Default mode BACKTEST; LIVE not representable; banner `LIVE TRADING: BLOCKED` (`tests/unit/test_config.py`, `tests/integration/test_app_starts.py`)
-- [x] Only Caddy publishes exactly TCP 80/443; internal networks; no host network, privileged, docker.sock, `:latest` (`tests/security/test_no_public_internal_ports.py`)
+- [x] Only Caddy publishes, exactly TCP 8080/444 on 127.0.0.1 (the host's Apache owns 80/443, DEC-027); internal networks; no host network, privileged, docker.sock, `:latest` (`tests/security/test_no_public_internal_ports.py`)
 - [x] Production validator: debug, placeholder/short/missing secrets, cookie settings, hostnames, DB credentials, Argon2 minimums
 - [x] No external assets, no inline script/style, no Node/npm, HTMX checksum pinned, no browser storage in first-party JS
 
@@ -45,7 +45,7 @@
 - [ ] DNS, TLS issuance, HSTS review; external port scan shows only 80/443 (partial: `tradingdots.onthewall.ovh` resolved to 92.222.190.142 from the authoring sandbox on 2026-09-30; `grafana.tradingdots.onthewall.ovh` resolved to the same address after the record was created; no AAAA records; TLS not checkable there, egress is proxied)
 - [ ] `docker compose up` actually starts: images build, `migrate` completes, `app` healthy, roles created (no Docker daemon was available)
 - [ ] Prometheus, Grafana, node-exporter (and cAdvisor if enabled) start and become healthy in Compose; Grafana loads the provisioned datasource and dashboards and shows data; the admin-password reset command in `docs/grafana-access.md` works
-- [ ] `caddy validate`; Caddy proxies Grafana over HTTPS; real Caddy log lines contain no cookies/authorization/full IPs; Caddy forwards a single client address in `X-Forwarded-For` from the `172.29.10.0/24` network
+- [ ] Caddy proxies Grafana over HTTPS (not checked with Grafana running); real Caddy log lines contain no cookies/authorization (not inspected). Done on the VPS on 2026-10-01 (DEC-027): `caddy validate` passes; log lines show masked addresses; Caddy receives one real client address from Apache and sends a single `X-Forwarded-For` value (checked in Caddy's log and a scratch upstream, not yet in the app's own records)
 - [ ] Base image digests pinned; dependency audit
 - [ ] Independent security review of the Phase 2 diff (not done)
 

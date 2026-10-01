@@ -263,6 +263,14 @@ The owner asked for live trading with automated position making, a data feed, a 
 - **Known design limits:** grid progress is derived from intents and attempts (no separate ledger); a SELL is placed for what a cell holds, just above the market if the market already passed its line; there is no WebSocket feed (REST candles and a REST book every tick); response shapes of the live API are unverified (AS-C3, AS-C4) and the first VPS run is the network test; `live run` recovers on every start, which pauses the bot (resume on the Bot page, then `live arm`).
 - Not verified: any real Coinbase request or response, signing against the real API, a real fill, Docker start of the `live` service, Caddy/TLS.
 - review: SELF. **No independent security review has been performed, and this change removes protections that must be restored before real money beyond a small test.**
+### DEC-027: Caddy behind the host's Apache on loopback 8080/444
+The VPS already runs Apache on 80/443 for another site, and the operator chose to keep it (2026-10-01).
+- Compose publishes Caddy on `127.0.0.1:8080` and `127.0.0.1:444` only; `edge_public` has the static subnet `172.29.30.0/24`. The verifier requires exactly these two ports and the loopback address (Docker bypasses ufw for published ports).
+- Apache (`infra/apache/tradingdots.conf`) terminates public TLS with its own certbot certificate, removes client-sent `X-Forwarded-*`/`Forwarded`, and proxies to Caddy over TLS, verifying Caddy's own certificate. Caddy gets that certificate over HTTP-01 through Apache's port 80 (TLS-ALPN disabled).
+- Caddy trusts `X-Forwarded-For` only from `172.29.30.1` (strict, right to left) and sends the app a single address. Without this the app's rightmost-entry rule would see the Docker gateway for every visitor and login throttling would be global (threat T22).
+- Verified on the VPS with Caddy alone (app not started): `caddy validate`; both certificates issued; blocked paths answer 404 through Apache; a request with forged `X-Forwarded-For: 6.6.6.6` and `X-Forwarded-Proto: http` reached Caddy with the real address and `https`; 8080/444 listen on 127.0.0.1 only. Not verified: the address the app itself records, Grafana through the chain, an external port scan.
+- New exposure: Apache is now part of the trusted path (it sees plaintext requests, cookies included, and its access log keeps full client addresses); its `Server` header replaces the one Caddy removes.
+- review: SELF. **No independent security review has been performed.**
 
 ## Safe defaults adopted from the baseline (section 2.7), pending DEC-000
 SD-1 separate `intake` container; SD-2 Grafana second layer in Caddy; SD-3 second host pulls backups

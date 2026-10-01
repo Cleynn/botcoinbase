@@ -39,7 +39,7 @@ def compose_with_cadvisor() -> dict[str, Any]:
 # ------------------------------------------------------------------ nothing is published
 def test_only_caddy_publishes_host_ports(compose: dict[str, Any]) -> None:
     assert {n: s["ports"] for n, s in compose["services"].items() if s.get("ports")} == {
-        "caddy": ["80:80", "443:443"]
+        "caddy": ["127.0.0.1:8080:80", "127.0.0.1:444:443"]
     }
 
 

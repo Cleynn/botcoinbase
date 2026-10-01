@@ -22,7 +22,9 @@ from app.config import ConfigError, load_settings, secret_problem  # noqa: E402
 
 EGRESS_PROXY = "egress-proxy"
 PUBLISHER = "caddy"
-ALLOWED_PUBLISHED = {("80", "tcp"), ("443", "tcp")}
+# The host's Apache owns the public 80/443 and proxies to Caddy on these loopback ports.
+ALLOWED_PUBLISHED = {("8080", "tcp"), ("444", "tcp")}
+LOOPBACK = "127.0.0.1"
 EXTRA_SECRETS = (
     "POSTGRES_PASSWORD",
     "REDIS_PASSWORD",
@@ -83,6 +85,13 @@ def _published(entry: Any) -> tuple[str, str]:
     return host, protocol
 
 
+def _host_ip(entry: Any) -> str:
+    if isinstance(entry, dict):
+        return str(entry.get("host_ip", ""))
+    parts = str(entry).rsplit("/", 1)[0].split(":")
+    return ":".join(parts[:-2]) if len(parts) >= 3 else ""
+
+
 def check_compose(compose: dict[str, Any]) -> list[str]:
     problems: list[str] = []
     services: dict[str, Any] = compose.get("services", {})
@@ -95,7 +104,10 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
         if name == PUBLISHER:
             published = {_published(p) for p in ports}
             if published != ALLOWED_PUBLISHED:
-                problems.append("caddy must publish exactly TCP 80 and 443")
+                problems.append("caddy must publish exactly TCP 8080 and 444")
+            # Docker bypasses the host firewall for published ports: only loopback is private.
+            if any(_host_ip(p) != LOOPBACK for p in ports):
+                problems.append("caddy must publish on 127.0.0.1 only")
         if svc.get("network_mode") == "host":
             problems.append(f"service '{name}' uses host networking")
         if svc.get("privileged"):
@@ -206,6 +218,14 @@ def check_caddyfile(text: str) -> list[str]:
     for path in ("/healthz", "/metrics", "/docs", "/openapi.json"):
         if path not in text:
             problems.append(f"Caddyfile does not block {path}")
+    # Behind Apache every request reaches Caddy from one gateway address: without these two the app
+    # would see that address (or a client-chosen one) as the visitor and throttle logins globally.
+    if not re.search(r"^\s*trusted_proxies_strict\s*$", text, re.MULTILINE):
+        problems.append("Caddyfile does not read X-Forwarded-For strictly (trusted_proxies_strict)")
+    if not re.search(
+        r"reverse_proxy app:8000 \{\s*header_up X-Forwarded-For \{client_ip\}\s*\}", text
+    ):
+        problems.append("Caddy does not forward a single client address to the app")
     if re.search(r"auto_https\s+off", text) or re.search(r"Access-Control-Allow-Origin\s+\*", text):
         problems.append("Caddyfile weakens TLS or enables wildcard CORS")
     return problems

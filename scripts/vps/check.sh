@@ -102,15 +102,19 @@ fi
 section "Network"
 ports_in_use() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
 if have ss; then
-  for p in 80 443; do
+  # Caddy listens on loopback 8080/444; the host's Apache owns 80/443 and proxies both hostnames to it.
+  for p in 8080 444; do
     if ports_in_use "$p"; then
-      if [ "$DOCKER_OK" -eq 1 ] && docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then ok "port $p" "in use by this stack's Caddy"; else warn "port $p" "already in use by another program (Caddy cannot bind it)" "sudo ss -ltnp 'sport = :$p'   then stop that service (for example: sudo systemctl disable --now nginx apache2)"; fi
+      if [ "$DOCKER_OK" -eq 1 ] && docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then ok "port $p" "in use by this stack's Caddy"; else warn "port $p" "already in use by another program (Caddy cannot bind it)" "sudo ss -ltnp 'sport = :$p'   then stop or move that service"; fi
     else
       ok "port $p" "free"
     fi
   done
+  for p in 80 443; do
+    if ports_in_use "$p"; then ok "port $p" "in use (the host's Apache, which proxies to Caddy)"; else warn "port $p" "nothing listens on it, so the site is unreachable" "sudo systemctl enable --now apache2   (site file: infra/apache/tradingdots.conf)"; fi
+  done
 else
-  warn "ports 80/443" "ss is not installed, cannot check" "sudo scripts/vps/02-install-prereqs.sh"
+  warn "ports 80/443/444/8080" "ss is not installed, cannot check" "sudo scripts/vps/02-install-prereqs.sh"
 fi
 if have ufw; then
   if ufw status 2>/dev/null | grep -q "Status: active"; then
@@ -140,7 +144,7 @@ else
     code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://$APP_HOST/" 2>/dev/null || true)"
     case "$code" in
       200|303|302) ok "HTTPS $APP_HOST" "valid certificate, HTTP $code" ;;
-      *) bad "HTTPS $APP_HOST" "no valid HTTPS answer (got '${code:-none}')" "docker compose logs --tail=50 caddy   (certificate issuance needs DNS and ports 80/443 open)" ;;
+      *) bad "HTTPS $APP_HOST" "no valid HTTPS answer (got '${code:-none}')" "docker compose logs --tail=50 caddy; sudo tail /var/log/apache2/tradingdots-error.log   (certificate issuance needs DNS, ports 80/443 open and Apache proxying to Caddy)" ;;
     esac
   fi
 fi

@@ -5,7 +5,7 @@ Scope: the Phase 1 shell only. No trading, credentials, or business data exist y
 | # | Threat | Mitigation in Phase 1 | Status |
 |---|---|---|---|
 | T1 | Accidental or malicious enabling of LIVE | `LIVE` not representable (mode allowlist, `TD_PROFILE` allowlist, unknown `TD_*` rejected, `live.example.yaml` never loaded); banner fixed to BLOCKED; no exchange code exists | Tested (`test_config.py`) |
-| T2 | Internal service exposed publicly | Only Caddy publishes 80/443; internal networks; validator + tests fail on any other port, host network, docker.sock, privileged | Tested statically; **not** verified on a running host |
+| T2 | Internal service exposed publicly | Only Caddy publishes, on loopback 8080/444 behind the host Apache (DEC-027); internal networks; validator + tests fail on any other port, host network, docker.sock, privileged | Tested statically; **not** verified on a running host |
 | T3 | Weak production config (debug, placeholder secrets, insecure cookies, bad hostnames) | `load_settings` refuses production start; `make verify-security-config` checks `.env` (incl. mode 600) | Tested |
 | T4 | Secret leakage via logs/errors/health | Redacting formatter; generic error pages; `/healthz` fixed body; `.env` git-ignored; scans for key material | Tested |
 | T5 | XSS / clickjacking / content sniffing | Autoescape, no inline scripts, CSP `default-src 'none'` + self, `frame-ancestors 'none'`, nosniff, htmx `allowEval=false`, vendored checksum-pinned HTMX | Tested |

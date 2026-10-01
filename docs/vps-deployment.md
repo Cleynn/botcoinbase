@@ -14,7 +14,7 @@ with the output of `scripts/vps/check.sh` (it never prints secrets).
 |---|---|---|---|
 | 0 | `git clone <repo> && cd botcoinbase && git checkout claude/epic-carson-18byfr` | gets the code | the folder |
 | 1 | `scripts/vps/check.sh` | lists what is missing | `Missing (do these in order ...)` |
-| 2 | `sudo scripts/vps/02-install-prereqs.sh` | git, make, curl, python3, dig, ss, ufw | `Prerequisites installed` |
+| 2 | `sudo scripts/vps/02-install-prereqs.sh` | git, make, curl, python3 (with yaml and pydantic), dig, ss, ufw | `Prerequisites installed` |
 | 3 | `sudo scripts/vps/01-install-docker.sh --add-user $USER` | Docker Engine + Compose v2 from Docker's apt repo | `Docker works.` (then log out and in) |
 | 4 | DNS: A records for `tradingdots.onthewall.ovh` and `grafana.tradingdots.onthewall.ovh` -> server IPv4 (no AAAA) | certificates need it | `check.sh` DNS lines `[ OK ]` |
 | 5 | `sudo scripts/vps/03-firewall.sh --ssh-port 22` (dry run), then add `--yes` | deny all incoming except SSH, 80, 443 | `Status: active` |
@@ -47,14 +47,35 @@ Steps 2 and 3 can be run in either order; step 4 can be done while they run (pro
 | Symptom | Likely cause | Action |
 |---|---|---|
 | `docker daemon` FAIL | service stopped or user not in the docker group | `sudo systemctl enable --now docker`; `sudo usermod -aG docker $USER`; log in again |
-| port 80/443 WARN | another web server | `sudo ss -ltnp 'sport = :80'`, then `sudo systemctl disable --now nginx apache2` |
+| port 8080/444 WARN | another program holds Caddy's loopback port | `sudo ss -ltnp 'sport = :8080'`, then stop or move that service |
+| port 80/443 WARN | Apache is not running | `sudo systemctl enable --now apache2`; see "Behind Apache" below |
 | DNS FAIL | missing or wrong A record, or IPv6 AAAA present | fix at the DNS provider, wait, re-run |
-| HTTPS FAIL | certificate not issued | `docker compose logs --tail=50 caddy`; needs DNS and open 80/443 |
+| HTTPS FAIL | certificate not issued, or Apache cannot reach Caddy | `docker compose logs --tail=50 caddy`; `sudo tail /var/log/apache2/tradingdots-error.log`; needs DNS and open 80/443 |
 | `.env` placeholder FAIL | edited by hand | `rm .env && scripts/vps/04-setup-env.sh` (regenerates all secrets: only before first start, the database password is fixed at first start) |
 | Coinbase API FAIL | outbound 443 blocked | open outbound TCP 443 |
 
 ## Ufw and Docker
 
 Docker writes its own firewall rules and can bypass ufw for published ports. This stack publishes only
-Caddy's 80 and 443 (see `docker-compose.yml`); confirm with `docker compose ps` and
-`ss -ltn` that nothing else listens publicly.
+Caddy's 8080 and 444, bound to 127.0.0.1 (see `docker-compose.yml`); confirm with `docker compose ps`
+and `ss -ltn` that nothing of this stack listens publicly.
+
+## Behind Apache
+
+This server already runs Apache on 80/443 for another site, so Apache stays in front:
+
+```
+Internet -> Apache :80  -> 127.0.0.1:8080 -> Caddy :80  (ACME HTTP-01, redirect to HTTPS)
+Internet -> Apache :443 -> 127.0.0.1:444  -> Caddy :443 -> app / Grafana
+```
+
+* Site file: `infra/apache/tradingdots.conf`, installed as `/etc/apache2/sites-available/tradingdots.conf`
+  (`sudo a2ensite tradingdots`). Modules: `proxy proxy_http ssl headers rewrite`.
+* Two certificates exist for the two hostnames. Apache's comes from certbot (`sudo certbot
+  certificates`, renewed by the certbot timer). Caddy's own is issued over HTTP-01 through Apache's
+  port 80; Apache verifies it on every proxied request.
+* Client address: Apache drops any `X-Forwarded-*` header a visitor sends and adds the real address;
+  Caddy trusts that header only from `172.29.30.1` (the `edge_public` gateway) and hands the app one
+  address. If the `edge_public` subnet changes, change `trusted_proxies` in the Caddyfile with it,
+  otherwise every visitor shares one login-throttle bucket.
+* Apache's own access log holds full client addresses (Caddy's log masks them).

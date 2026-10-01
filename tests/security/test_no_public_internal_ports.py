@@ -29,9 +29,9 @@ def test_real_compose_passes(verify: ModuleType, compose: dict[str, Any]) -> Non
     assert verify.check_compose(compose) == []
 
 
-def test_only_caddy_publishes_ports_and_only_80_443(compose: dict[str, Any]) -> None:
+def test_only_caddy_publishes_ports_and_only_loopback_8080_444(compose: dict[str, Any]) -> None:
     published = {n: s["ports"] for n, s in compose["services"].items() if s.get("ports")}
-    assert published == {"caddy": ["80:80", "443:443"]}
+    assert published == {"caddy": ["127.0.0.1:8080:80", "127.0.0.1:444:443"]}
 
 
 @pytest.mark.parametrize("service", INTERNAL)
@@ -45,14 +45,39 @@ def test_publishing_any_internal_service_fails(
 
 
 @pytest.mark.parametrize(
-    "ports", [["80:80", "443:443", "8080:8080"], ["80:80", "443:443/udp"], ["80:80"]]
+    "ports",
+    [
+        ["127.0.0.1:8080:80", "127.0.0.1:444:443", "127.0.0.1:9000:9000"],
+        ["127.0.0.1:8080:80", "127.0.0.1:444:443/udp"],
+        ["127.0.0.1:8080:80"],
+        ["80:80", "443:443"],
+    ],
 )
-def test_caddy_must_publish_exactly_tcp_80_443(
+def test_caddy_must_publish_exactly_tcp_8080_444(
     verify: ModuleType, compose: dict[str, Any], ports: list[str]
 ) -> None:
     mutated = copy.deepcopy(compose)
     mutated["services"]["caddy"]["ports"] = ports
-    assert any("exactly TCP 80 and 443" in p for p in verify.check_compose(mutated))
+    assert any("exactly TCP 8080 and 444" in p for p in verify.check_compose(mutated))
+
+
+@pytest.mark.parametrize(
+    "ports",
+    [
+        ["8080:80", "444:443"],
+        ["0.0.0.0:8080:80", "127.0.0.1:444:443"],
+        [
+            {"target": 80, "published": 8080, "host_ip": "127.0.0.1"},
+            {"target": 443, "published": 444},
+        ],
+    ],
+)
+def test_caddy_must_publish_on_loopback_only(
+    verify: ModuleType, compose: dict[str, Any], ports: list[Any]
+) -> None:
+    mutated = copy.deepcopy(compose)
+    mutated["services"]["caddy"]["ports"] = ports
+    assert verify.check_compose(mutated) == ["caddy must publish on 127.0.0.1 only"]
 
 
 @pytest.mark.parametrize(
@@ -105,6 +130,9 @@ def test_real_caddyfile_passes_and_regressions_fail(verify: ModuleType, caddyfil
         != []
     )
     assert verify.check_caddyfile(caddyfile.replace("/metrics*", "/nothing")) != []
+    assert verify.check_caddyfile(caddyfile.replace("trusted_proxies_strict", "")) != []
+    single_address = "header_up X-Forwarded-For {client_ip}"
+    assert verify.check_caddyfile(caddyfile.replace(single_address, "")) != []
     assert (
         verify.check_caddyfile(caddyfile.replace("{$TD_GRAFANA_HOSTNAME}", "grafana.example.com"))
         != []

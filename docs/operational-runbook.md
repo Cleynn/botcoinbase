@@ -5,7 +5,7 @@
 ## Before first start (operator)
 1. DNS: A (and AAAA if used) records for `tradingdots.onthewall.ovh` and `grafana.tradingdots.onthewall.ovh` to the VPS. Add a CAA record.
    - Known: `tradingdots.onthewall.ovh` is `92.222.190.142` (IPv4; the operator supplied it, and a resolver in the authoring sandbox returned the same on 2026-09-30). `grafana.tradingdots.onthewall.ovh` was missing earlier that day and, after the operator created it, resolved to the same `92.222.190.142` from the same resolver. Neither name returned an IPv6 (AAAA) address there, so no AAAA record is expected; add one only for the VPS itself.
-   - Check from any machine: `dig +short A tradingdots.onthewall.ovh` must print `92.222.190.142`; `dig +short A grafana.tradingdots.onthewall.ovh` must print the VPS address; `dig +short AAAA` for both must be empty or the VPS's own IPv6, never another host. Caddy needs inbound TCP 80 and 443 on that address for the ACME HTTP/TLS challenge.
+   - Check from any machine: `dig +short A tradingdots.onthewall.ovh` must print `92.222.190.142`; `dig +short A grafana.tradingdots.onthewall.ovh` must print the VPS address; `dig +short AAAA` for both must be empty or the VPS's own IPv6, never another host. Caddy needs inbound TCP 80 on that address (forwarded by Apache) for the ACME HTTP challenge.
 2. Firewall: default-deny inbound, allow SSH (key-only), TCP 80 and 443. Docker-published ports bypass `ufw`; restrict with `DOCKER-USER` rules and verify with an external scan.
 3. SSH key-only, no root login, unattended security upgrades, time sync (chrony).
 4. Install Docker Engine + Compose plugin.
@@ -47,10 +47,11 @@ make monitoring-status            # targets up/down and firing alerts (asks Prom
 
 ## Behind Caddy
 The app trusts `X-Forwarded-For` only from `172.29.10.0/24` (the static `edge_app` subnet). If that subnet conflicts with your host network, change it in `docker-compose.yml` **and** `trusted_proxies` in `config/base.yaml` together. If they disagree every client looks like the proxy and login throttling becomes global.
+The same holds one hop earlier: Caddy sits behind the host's Apache and trusts `X-Forwarded-For` only from `172.29.30.1`, the gateway of the static `edge_public` subnet; change `docker-compose.yml` and `trusted_proxies` in `infra/caddy/Caddyfile` together (`docs/vps-deployment.md`, "Behind Apache").
 Prometheus, Grafana and node-exporter start with the rest of the stack (Phase 3). Optional cAdvisor: `docker compose --profile cadvisor up -d cadvisor` (`docs/monitoring.md`).
 
 ## Verify from outside
-`https://tradingdots.onthewall.ovh/` redirects to the login page, which shows the banner; after sign-in the overview loads with the monitoring summary; `/healthz`, `/docs`, `/openapi.json`, `/metrics` return 404; the Grafana host shows Grafana's own login page; `/metrics` and Grafana's `/api/health` return 404 on both hosts; an external scan shows only 80/443.
+`https://tradingdots.onthewall.ovh/` redirects to the login page, which shows the banner; after sign-in the overview loads with the monitoring summary; `/healthz`, `/docs`, `/openapi.json`, `/metrics` return 404; the Grafana host shows Grafana's own login page; `/metrics` and Grafana's `/api/health` return 404 on both hosts; an external scan shows only 80/443 (Apache; Caddy's 8080/444 are loopback only).
 
 ## Resource guidance (6 vCPU, 12 GB RAM, 100 GB disk)
 | Service | Memory limit |

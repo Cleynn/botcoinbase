@@ -1,9 +1,13 @@
-# Caddy is the only public service (TCP 80/443). Hostnames come from the environment.
-# UNVERIFIED: not run through `caddy validate` in the authoring environment (no Caddy binary).
+# Caddy is the only published service, on loopback 8080/444 behind the host's Apache (which owns the
+# public 80/443, see infra/apache/tradingdots.conf). Hostnames come from the environment.
 {
 	admin off
 	servers {
 		protocols h1 h2
+		# Apache reaches Caddy from the edge_public gateway (docker-compose.yml). Only that address
+		# may supply X-Forwarded-For; it is read right to left so a client cannot prepend a fake one.
+		trusted_proxies static 172.29.30.1/32
+		trusted_proxies_strict
 	}
 }
 
@@ -15,6 +19,13 @@
 	}
 	request_body {
 		max_size 1MB
+	}
+	# Public 443 belongs to Apache, so the TLS-ALPN challenge can never reach Caddy; certificates
+	# are issued over HTTP-01, which Apache forwards from port 80.
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
 	}
 	log {
 		output stdout
@@ -43,7 +54,11 @@
 		respond 404
 	}
 	handle {
-		reverse_proxy app:8000
+		# One address only: the app counts the rightmost X-Forwarded-For entry, which would
+		# otherwise be the Docker gateway for every visitor (login throttling would be global).
+		reverse_proxy app:8000 {
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 }
 
@@ -54,6 +69,8 @@
 		respond 404
 	}
 	handle {
-		reverse_proxy grafana:3000
+		reverse_proxy grafana:3000 {
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 }
