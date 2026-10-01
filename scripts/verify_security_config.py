@@ -143,6 +143,7 @@ def check_compose(compose: dict[str, Any]) -> list[str]:
             EGRESS_PROXY,
             "pairs",
             "batch",
+            "live",  # the live grid runner (host role, reads and orders go through the proxy)
         }:
             problems.append(f"service '{name}' must not join egress_int")
     problems += _check_review_volume(services)

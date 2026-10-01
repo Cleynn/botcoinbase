@@ -103,12 +103,12 @@ def test_the_top_level_cli_routes_the_new_groups(monkeypatch: pytest.MonkeyPatch
     assert [s[0] for s in seen] == ["market", "backtest", "paper", "review"]
 
 
-def test_the_cli_has_no_order_or_live_command() -> None:
+def test_the_cli_has_no_order_withdraw_or_sell_command() -> None:  # `live` exists since DEC-026
     from app.batch_cli import _parser
 
     text = _parser().format_help().lower() + " ".join(
         a.dest
         for a in _parser()._actions  # noqa: SLF001
     )
-    for word in ("live", "order", "withdraw", "sell", "kill"):
+    for word in ("order", "withdraw", "sell", "kill"):
         assert word not in text

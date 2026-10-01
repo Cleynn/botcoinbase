@@ -270,6 +270,39 @@ services:
     mem_limit: 512m
     pids_limit: 100
 
+  # Live grid runner: recovers on start (bot PAUSED), then trades only while the bot is RUNNING,
+  # the mode is LIVE and live trading is armed. Start with: docker compose --profile live up -d live
+  live:
+    <<: *hardening
+    restart: unless-stopped
+    profiles: [live]
+    build: *app-build
+    image: tradingdots-app:phase4
+    user: "10001:10001"
+    entrypoint: ["python", "-m", "app.cli"]
+    command: ["live", "run"]
+    environment:
+      TD_ENVIRONMENT: ${TD_ENVIRONMENT:-production}
+      TD_APP_HOSTNAME: ${TD_APP_HOSTNAME:?set in .env}
+      TD_GRAFANA_HOSTNAME: ${TD_GRAFANA_HOSTNAME:?set in .env}
+      TD_SECRET_KEY: ${TD_SECRET_KEY:?set in .env}
+      TD_DB_USER: td_ctl
+      TD_DB_PASSWORD: ${TD_DB_CTL_PASSWORD:?set in .env}
+      TD_EGRESS_PROXY: http://egress-proxy:3128
+      TD_COINBASE_KEY_FILE: /run/secrets/coinbase.json
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    volumes:
+      - datasets:/data
+      # Coinbase key (host only, never the web app); /dev/null when no key is installed
+      - ${TD_COINBASE_KEY_HOST_PATH:-/dev/null}:/run/secrets/coinbase.json:ro
+    networks: [backend, egress_int]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      egress-proxy: {condition: service_healthy}
+    mem_limit: 512m
+    pids_limit: 100
+
   # ---- Monitoring (Phase 3): observational and read-only, nothing here is published ----------
   prometheus:
     <<: *hardening

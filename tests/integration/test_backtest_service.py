@@ -92,9 +92,9 @@ def test_a_different_level_count_is_a_different_report(mkt: Market) -> None:
     assert a.sha256 != b.sha256
 
 
-def test_levels_outside_three_to_five_are_refused(mkt: Market) -> None:
+def test_levels_outside_three_to_twenty_are_refused(mkt: Market) -> None:
     snap = snapshot(mkt)
-    for levels in (2, 6):
+    for levels in (2, 21):
         with pytest.raises(Exception, match="levels|LEVELS"):
             service(mkt).run(snap.id, levels=levels)
 
